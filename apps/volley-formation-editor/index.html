@@ -2556,6 +2556,172 @@ function findRelevantBlocker(bx, bz, tx, tz) {
   return best;
 }
 
+// 強打のラインから0.6m以内にブロッカーがいて、ボール~ターゲット間に位置するか
+// 強打が「ブロックに当たる/すり抜ける」可能性を持つかの判定
+function findBlockerOnStrikePath(bx, bz, tx, tz) {
+  if (!currentBlockers.length) return null;
+  const dx = tx - bx, dz = tz - bz;
+  const lineLenSq = dx * dx + dz * dz;
+  if (lineLenSq < 0.01) return null;
+  let best = null, bestPerp = Infinity;
+  for (const b of currentBlockers) {
+    // 線分上の最近点パラメータ t (0=ball, 1=target)
+    const t = ((b.x - bx) * dx + (b.z - bz) * dz) / lineLenSq;
+    if (t < 0.05 || t > 0.95) continue; // 範囲外
+    const cx = bx + dx * t, cz = bz + dz * t;
+    const perp = Math.hypot(b.x - cx, b.z - cz);
+    if (perp < 0.7 && perp < bestPerp) {
+      best = b; bestPerp = perp;
+    }
+  }
+  return best;
+}
+
+// 強打がブロックに当たった場合の跳ね返り目標(攻撃側=z反対方向に上がって戻る)
+function calcDeflectionTarget(handX, handZ, tx, tz) {
+  const dx = tx - handX, dz = tz - handZ;
+  // handから攻撃元方向へ。距離は元の0.5倍(コート半分くらい戻る)
+  return { x: handX - dx * 0.5, z: handZ - dz * 0.7 };
+}
+
+// 強打 + ブロック干渉 の軌道を描画 (3線同時表示)
+//   1. 前段: ball→hand (実線・強打色 オレンジ) — ヒット直前まで
+//   2. すり抜けゴースト: hand→target (薄いオレンジ・透過率0.22)
+//   3. 跳ね返り反射弧: hand→deflectionTarget (シアン・実線・山なり)
+function buildStrikeWithBlock(scene, bx, by, bz, tx, tz, blocker, halfAngleDeg, colorHex, type, courseIdx) {
+  const targetY = 0.05;
+  const handX = blocker.x, handZ = blocker.z, handY = blocker.handY;
+
+  // ----- Phase 1: ball → hand (実線・強打色) -----
+  const p1Pts = [];
+  const p1Segs = 18;
+  for (let i = 0; i <= p1Segs; i++) {
+    const t = i / p1Segs;
+    p1Pts.push(new THREE.Vector3(
+      bx + (handX - bx) * t,
+      by * (1 - t) + handY * t,
+      bz + (handZ - bz) * t,
+    ));
+  }
+  const p1Curve = new THREE.CatmullRomCurve3(p1Pts);
+  const p1Geo = new THREE.TubeGeometry(p1Curve, 30, 0.04, 8, false);
+  const p1Mat = new THREE.MeshStandardMaterial({
+    color: colorHex, emissive: colorHex, emissiveIntensity: 0.6,
+    roughness: 0.3, transparent: true, opacity: 1.0,
+  });
+  const p1Tube = new THREE.Mesh(p1Geo, p1Mat);
+  scene.add(p1Tube);
+
+  // ----- Slip-through ghost: hand → target (薄い同色) -----
+  const slipPts = [];
+  const slipSegs = 26;
+  for (let i = 0; i <= slipSegs; i++) {
+    const t = i / slipSegs;
+    slipPts.push(new THREE.Vector3(
+      handX + (tx - handX) * t,
+      handY * (1 - t) + targetY * t,
+      handZ + (tz - handZ) * t,
+    ));
+  }
+  const slipCurve = new THREE.CatmullRomCurve3(slipPts);
+  const slipGeo = new THREE.TubeGeometry(slipCurve, 36, 0.035, 8, false);
+  const slipMat = new THREE.MeshStandardMaterial({
+    color: colorHex, emissive: colorHex, emissiveIntensity: 0.25,
+    roughness: 0.3, transparent: true, opacity: 0.28,
+  });
+  const slipTube = new THREE.Mesh(slipGeo, slipMat);
+  scene.add(slipTube);
+
+  // ----- Bounce arc: hand → deflection target (シアン・山なり) -----
+  const defl = calcDeflectionTarget(handX, handZ, tx, tz);
+  const bounceColor = 0x58d3ff;
+  const bouncePts = [];
+  const bounceSegs = 26;
+  const bouncePeak = 1.4;  // 山なりの高さ(攻撃側に高く戻る)
+  for (let i = 0; i <= bounceSegs; i++) {
+    const t = i / bounceSegs;
+    const x = handX + (defl.x - handX) * t;
+    const z = handZ + (defl.z - handZ) * t;
+    const chord = handY * (1 - t) + targetY * t;
+    const bump = 4 * t * (1 - t) * bouncePeak;
+    bouncePts.push(new THREE.Vector3(x, chord + bump, z));
+  }
+  const bounceCurve = new THREE.CatmullRomCurve3(bouncePts);
+  const bounceGeo = new THREE.TubeGeometry(bounceCurve, 40, 0.04, 8, false);
+  const bounceMat = new THREE.MeshStandardMaterial({
+    color: bounceColor, emissive: bounceColor, emissiveIntensity: 0.6,
+    roughness: 0.3, transparent: true, opacity: 0.95,
+  });
+  const bounceTube = new THREE.Mesh(bounceGeo, bounceMat);
+  scene.add(bounceTube);
+
+  // 衝突点(白い小球)
+  const hitGeo = new THREE.SphereGeometry(0.07, 12, 8);
+  const hitMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
+  const hitMarker = new THREE.Mesh(hitGeo, hitMat);
+  hitMarker.position.set(handX, handY, handZ);
+  scene.add(hitMarker);
+
+  // 着地マーカー(2点): すり抜け目標(faded) と 跳ね返り目標(bright)
+  const slipRingGeo = new THREE.RingGeometry(0.10, 0.18, 24);
+  const slipRingMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+  const slipRing = new THREE.Mesh(slipRingGeo, slipRingMat);
+  slipRing.rotation.x = -Math.PI / 2;
+  slipRing.position.set(tx, 0.02, tz);
+  scene.add(slipRing);
+
+  const bounceRingGeo = new THREE.RingGeometry(0.12, 0.22, 24);
+  const bounceRingMat = new THREE.MeshBasicMaterial({ color: bounceColor, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+  const bounceRing = new THREE.Mesh(bounceRingGeo, bounceRingMat);
+  bounceRing.rotation.x = -Math.PI / 2;
+  bounceRing.position.set(defl.x, 0.02, defl.z);
+  scene.add(bounceRing);
+
+  // ファン: すり抜け側のみ(従来通り)
+  const fan = buildFanFloor3D(scene, handX, handZ, tx, tz, halfAngleDeg, colorHex, type);
+
+  // バッジ: 強打 (元の位置=すり抜け目標)
+  const badge = makeCourseBadge(courseIdx + 1, type, colorHex);
+  badge.position.set(tx, 0.85, tz);
+  scene.add(badge);
+  // 跳ね返り側にも小さなラベル
+  const bounceBadge = makeBounceBadge();
+  bounceBadge.position.set(defl.x, 0.75, defl.z);
+  scene.add(bounceBadge);
+
+  courseObjects.push({
+    tube: p1Tube, tubeGeo: p1Geo,
+    slipTube, bounceTube,
+    ring: slipRing, ringMat: slipRingMat,
+    bounceRing, bounceRingMat,
+    fan, badge, bounceBadge, hitMarker,
+    courseIdx, colorHex, type, isStrikeBlock: true,
+  });
+}
+
+function makeBounceBadge() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 168; canvas.height = 48;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(10,14,20,0.85)';
+  roundRect(ctx, 1, 1, 166, 46, 10, true, false);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#58d3ff';
+  roundRect(ctx, 1, 1, 166, 46, 10, false, true);
+  ctx.fillStyle = '#58d3ff';
+  ctx.font = 'bold 18px "Noto Sans JP", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🛡跳ね返り', 84, 26);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.7, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.85, 0.24, 1);
+  sprite.userData.baseOpacity = 0.7;
+  return sprite;
+}
+
 // 2段軌道: ball -> blocker hand -> target
 //  Phase1 (ball→hand): 直線・速い (ヒット衝突)
 //  Phase2 (hand→target): 弾性反射軌道 (上に跳ね上がる山なり)
@@ -2653,6 +2819,14 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
       return buildBlockTrajectory(scene, bx, by, bz, tx, tz, blocker, arcHeight, halfAngleDeg, colorHex, type, courseIdx);
     }
     // ブロッカーがいない場合は通常の軌道にフォールバック
+  }
+
+  // ====== STRIKE type with blocker on path: 同時に「すり抜け」「跳ね返り」両方を表示 ======
+  if (type === 'strike') {
+    const blkOnPath = findBlockerOnStrikePath(bx, bz, tx, tz);
+    if (blkOnPath) {
+      return buildStrikeWithBlock(scene, bx, by, bz, tx, tz, blkOnPath, halfAngleDeg, colorHex, type, courseIdx);
+    }
   }
 
   const dx = tx - bx, dz = tz - bz;
@@ -2763,7 +2937,21 @@ function highlightSelectedCourse(selectedIdx) {
       co.tube.material.opacity = isSel ? 1.0 : (selectedIdx < 0 ? 1.0 : 0.22);
       co.tube.material.emissiveIntensity = isSel ? 1.1 : 0.4;
     }
-    // Ring on floor
+    // Slip-through ghost (faded base)
+    if (co.slipTube && co.slipTube.material) {
+      co.slipTube.material.opacity = isSel ? 0.5 : (selectedIdx < 0 ? 0.28 : 0.1);
+      co.slipTube.material.emissiveIntensity = isSel ? 0.45 : 0.2;
+    }
+    // Bounce arc (deflection)
+    if (co.bounceTube && co.bounceTube.material) {
+      co.bounceTube.material.opacity = isSel ? 1.0 : (selectedIdx < 0 ? 0.95 : 0.22);
+      co.bounceTube.material.emissiveIntensity = isSel ? 1.0 : 0.4;
+    }
+    // Bounce ring on floor
+    if (co.bounceRingMat) {
+      co.bounceRingMat.opacity = isSel ? 1.0 : (selectedIdx < 0 ? 0.85 : 0.22);
+    }
+    // Ring on floor (slip target / normal target)
     if (co.ringMat) {
       co.ringMat.opacity = isSel ? 1.0 : (selectedIdx < 0 ? 0.9 : 0.25);
     }
@@ -2774,6 +2962,11 @@ function highlightSelectedCourse(selectedIdx) {
     // Hit marker (block deflection point)
     if (co.hitMarker && co.hitMarker.material) {
       co.hitMarker.material.opacity = isSel ? 0.95 : (selectedIdx < 0 ? 0.9 : 0.25);
+    }
+    // Bounce badge
+    if (co.bounceBadge && co.bounceBadge.material) {
+      const base = co.bounceBadge.userData.baseOpacity ?? 0.7;
+      co.bounceBadge.material.opacity = isSel ? 1.0 : (selectedIdx < 0 ? base : 0.18);
     }
     // Badge: selected = full bright + slightly larger; others = faint
     if (co.badge && co.badge.material) {

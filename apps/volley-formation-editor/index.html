@@ -693,6 +693,7 @@
   }
   .view3d-controls .control-label { font-size: 10px; }
   .view3d-controls details {
+    position: relative;
     border: 1px solid var(--line-strong);
     border-radius: 2px;
     padding: 0;
@@ -711,16 +712,22 @@
     background: transparent;
   }
   .view3d-controls details > summary::-webkit-details-marker { display: none; }
-  .view3d-controls details[open] > summary { border-bottom: 1px solid var(--line); }
-  .view3d-controls details[open] {
+  .view3d-controls details[open] > summary {
+    background: var(--accent-our);
+    color: var(--bg-deep);
+  }
+  /* heights-gridのみ絶対配置(summary自体は通常フロー位置に残す) */
+  .view3d-controls details[open] > .heights-grid {
     position: absolute;
-    top: 100%;
-    left: 14px;
-    z-index: 10;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 50;
     background: rgba(13, 18, 28, 0.96);
     backdrop-filter: blur(8px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.45);
-    min-width: 280px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.55);
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    min-width: 300px;
   }
   .view3d-controls .heights-grid {
     display: grid;

@@ -861,34 +861,38 @@
    - Fan-shaped attack range visualization
 ============================================================ */
 
-// ---------- COURT GEOMETRY ----------
-// SVG viewBox is enlarged to allow off-court placement
-// Court itself stays in the middle; surrounding 60px of "out" area is usable
+// ---------- COURT GEOMETRY (小学生バレー: 16m × 8m, 1 side = 8m × 8m square) ----------
+// SVG viewBox: 8m横 × 16m縦の比 (1:2)。各サイドは 8m × 8m の正方形。
+// Court width SVG: 280, side height SVG: 280 (per side), total court height: 560.
+// Attack line: 2.7m / 8m = 0.3375 → 280 * 0.3375 = 94.5 from net.
 const COURT = {
-  vbW: 480, vbH: 540,
+  vbW: 480, vbH: 720,
   // OUR court (lower)
   ourLeft: 100, ourRight: 380,
-  ourTop: 260,    // net line y
-  ourBottom: 460,
-  ourAttackLine: 320, // 3m line
+  ourTop: 380,            // net line y
+  ourBottom: 660,         // 380 + 280
+  ourAttackLine: 474.5,   // ourTop + 280 * (2.7/8) ≈ 474.5
   // OPP court (upper)
   oppTop: 100,
-  oppBottom: 260,
-  oppAttackLine: 200,
+  oppBottom: 380,
+  oppAttackLine: 285.5,   // oppBottom - 280 * (2.7/8)
   // playable area (where things can go - includes off-court)
   playLeft: 10, playRight: 470,
-  playTop: 40, playBottom: 520,
+  playTop: 40, playBottom: 700,
 };
 
 // ---------- DEFAULT POSITIONS (小学生バレー 6ポジション役割モデル) ----------
 // L=レフト, C=センター, R=ライト, S=セッター(ネット際独立), LB=レフトバック, RB=ライトバック
 // ローテーションなし、フリーポジション制
 //
-// 仕様の0〜100座標 → SVG変換:
-//   svgX = 100 + specX * 2.8     (specX=0→ourLeft=100, specX=100→ourRight=380)
-//   svgY = 260 + (specY-50) * 4  (specY=50→net=260, specY=100→endline=460)
+// 仕様の0〜100座標 → SVG変換 (新コート 280 × 560 / 1:2):
+//   svgX = ourLeft + specX * (ourRight-ourLeft)/100
+//   svgY = oppTop  + specY * (ourBottom-oppTop)/100
+//   specY=50 が net (=380)、specY=0 が相手エンドライン (=100)、specY=100 が自エンドライン (=660)
 function specToSvg(sx, sy) {
-  return { x: 100 + sx * 2.8, y: 260 + (sy - 50) * 4 };
+  const w = COURT.ourRight - COURT.ourLeft;     // 280
+  const h = COURT.ourBottom - COURT.oppTop;     // 560 (full 16m)
+  return { x: COURT.ourLeft + sx * w / 100, y: COURT.oppTop + sy * h / 100 };
 }
 function makePlayer(id, sx, sy, role = 'our') {
   const p = specToSvg(sx, sy);
@@ -906,17 +910,19 @@ function defaultOurPlayers() {
   ];
 }
 function defaultOppPlayers() {
+  // 相手側 (y < net=380): 3人並びと1人セッターのデフォルト
   return [
-    { id: 'O1', label: 'O', x: 150, y: 160, role: 'opp' },
-    { id: 'O2', label: 'O', x: 240, y: 160, role: 'opp' },
-    { id: 'O3', label: 'O', x: 330, y: 160, role: 'opp' },
-    { id: 'O4', label: 'O', x: 240, y: 225, role: 'opp' },
+    { id: 'O1', label: 'O', x: 150, y: 220, role: 'opp' },
+    { id: 'O2', label: 'O', x: 240, y: 200, role: 'opp' },
+    { id: 'O3', label: 'O', x: 330, y: 220, role: 'opp' },
+    { id: 'O4', label: 'O', x: 240, y: 320, role: 'opp' },
   ];
 }
 function defaultBall() {
   // Hidden by default; user activates by drag-from-icon or by clicking "ボール配置"
   // h = ball height in meters (used in 3D view)
-  return { x: 240, y: 230, visible: false, h: 2.5 };
+  // Default position: just above net on opp setter zone
+  return { x: 240, y: 350, visible: false, h: 2.5 };
 }
 
 // Default arc height (meters) per shot type — used in 3D view as initial value
@@ -2395,6 +2401,8 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
     emissive: colorHex,
     emissiveIntensity: 0.55,
     roughness: 0.3,
+    transparent: true,
+    opacity: 1.0,
   });
   const tube = new THREE.Mesh(tubeGeo, tubeMat);
   scene.add(tube);
@@ -2410,8 +2418,82 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
   // Fan area on the floor (the "possible landing range")
   const fan = buildFanFloor3D(scene, bx, bz, tx, tz, halfAngleDeg, colorHex, type);
 
-  // Register for live updates
-  courseObjects.push({ tube, tubeGeo, ring, fan, courseIdx });
+  // Course number badge — small sprite floating above the landing point
+  // Visible enough to identify the course, but small to avoid clutter
+  const badge = makeCourseBadge(courseIdx + 1, type, colorHex);
+  badge.position.set(tx, 0.85, tz);
+  scene.add(badge);
+
+  // Register for live updates (with material refs for highlight/dim)
+  courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, courseIdx, colorHex, type });
+}
+
+// Small color-coded badge sprite shown at landing point: "#1 強打"
+function makeCourseBadge(num, type, colorHex) {
+  const labels = { strike: '強打', block: 'ワンタッチ', loop: 'ループ', feint: 'フェイント' };
+  const text = `#${num} ${labels[type] || ''}`;
+  const canvas = document.createElement('canvas');
+  canvas.width = 192; canvas.height = 56;
+  const ctx = canvas.getContext('2d');
+  // Background pill
+  const colorCss = '#' + colorHex.toString(16).padStart(6, '0');
+  ctx.fillStyle = 'rgba(10,14,20,0.85)';
+  roundRect(ctx, 1, 1, 190, 54, 12, true, false);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = colorCss;
+  roundRect(ctx, 1, 1, 190, 54, 12, false, true);
+  // Text
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px "Noto Sans JP", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 96, 30);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.55, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.95, 0.28, 1);
+  sprite.userData.baseOpacity = 0.55;
+  return sprite;
+}
+
+function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
+
+// Highlight the selected course; dim the others. Pass -1 to clear (all visible).
+function highlightSelectedCourse(selectedIdx) {
+  courseObjects.forEach(co => {
+    const isSel = (co.courseIdx === selectedIdx);
+    // Tube: bright vs dim
+    if (co.tube && co.tube.material) {
+      co.tube.material.opacity = isSel ? 1.0 : (selectedIdx < 0 ? 1.0 : 0.22);
+      co.tube.material.emissiveIntensity = isSel ? 1.1 : 0.4;
+    }
+    // Ring on floor
+    if (co.ringMat) {
+      co.ringMat.opacity = isSel ? 1.0 : (selectedIdx < 0 ? 0.9 : 0.25);
+    }
+    // Fan polygon (semi-transparent)
+    if (co.fan && co.fan.material) {
+      co.fan.material.opacity = isSel ? 0.32 : (selectedIdx < 0 ? 0.18 : 0.06);
+    }
+    // Badge: selected = full bright + slightly larger; others = faint
+    if (co.badge && co.badge.material) {
+      const base = co.badge.userData.baseOpacity ?? 0.55;
+      co.badge.material.opacity = isSel ? 1.0 : (selectedIdx < 0 ? base : 0.2);
+      const s = isSel ? 1.15 : 1.0;
+      co.badge.scale.set(0.95 * s, 0.28 * s, 1);
+    }
+  });
 }
 
 function buildFanFloor3D(scene, bx, bz, tx, tz, halfAngleDeg, color, type) {
@@ -2578,11 +2660,13 @@ function initSliders(pattern) {
   if (pattern.courses.length > 0) {
     courseSelect.value = '0';
     syncArcSliderToCourse(0, pattern);
+    highlightSelectedCourse(0);
   } else {
     courseSelect.value = '-1';
     arcSlider.disabled = true;
     arcSlider.value = 0;
     arcVal.textContent = '— —';
+    highlightSelectedCourse(-1);
   }
 }
 
@@ -2619,6 +2703,7 @@ courseSelect.addEventListener('change', (e) => {
   const pattern = state.patterns[currentIdx];
   const idx = parseInt(e.target.value, 10);
   syncArcSliderToCourse(idx, pattern);
+  highlightSelectedCourse(isNaN(idx) ? -1 : idx);
 });
 
 arcSlider.addEventListener('input', (e) => {
@@ -2635,7 +2720,7 @@ arcSlider.addEventListener('input', (e) => {
 });
 
 function rebuildSceneFromCurrent() {
-  if (currentIdx < 0 || !scene) return;
+  if (currentIdx < 0) return;
   const state = window._volleyState();
   const pattern = state.patterns[currentIdx];
   // Save current camera position so user doesn't lose their angle
@@ -2645,6 +2730,11 @@ function rebuildSceneFromCurrent() {
   if (savedPos && camera) camera.position.copy(savedPos);
   if (savedTarget && controls) controls.target.copy(savedTarget);
   if (controls) controls.update();
+  // buildScene -> cleanupScene cancels the animation loop. Restart it.
+  if (!animationId) animate();
+  // Re-apply selected course highlight
+  const selIdx = parseInt(courseSelect.value, 10);
+  if (!isNaN(selIdx)) highlightSelectedCourse(selIdx);
 }
 
 // ---------- ENTRY ----------

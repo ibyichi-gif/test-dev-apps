@@ -684,6 +684,9 @@
     flex-wrap: wrap;
     gap: 6px 14px;
     align-items: center;
+    /* canvas が後続兄弟だが、controls の絶対配置子(身長パネル)を前面に出す */
+    position: relative;
+    z-index: 100;
   }
   .view3d-cam-row, .view3d-slider-row {
     display: flex;
@@ -930,7 +933,7 @@
     </details>
   </div>
   <div class="view3d-canvas-wrap" id="view3dCanvasWrap">
-    <div class="view3d-hint">マウス左ドラッグ:回転 / ホイール:ズーム / 右ドラッグ:パン</div>
+    <div class="view3d-hint">選手をドラッグ:移動 / 何もない所を左ドラッグ:回転 / ホイール:ズーム / 右ドラッグ:パン</div>
   </div>
 </div>
 
@@ -2155,6 +2158,8 @@ let ballMesh = null;
 let ballPole = null;       // dashed vertical line under ball
 const courseObjects = [];  // Array of {tube, ring, fan, courseIdx}
 const currentBlockers = []; // Array of {x, z, handY, id, heightCm} world coords for active blockers
+const playerGroups = [];   // Array of {group, playerId, side} for drag-to-move
+let dragState = null;      // { group, playerId, side, plane } during drag
 
 // World scale (小学生バレー): court 16m × 8m, net 2.00m, attack line 2.7m
 // 1 SVG unit ≈ 8/280 m ≈ 0.0286 m
@@ -2173,10 +2178,20 @@ function svgToWorld(sx, sy) {
   // SVG: x grows right, y grows down
   // World: x = SVG x mapped to court width, z = SVG y mapped to court length
   const courtSvgW = COURT.ourRight - COURT.ourLeft;       // 280
-  const courtSvgL = COURT.ourBottom - COURT.oppTop;       // 360
+  const courtSvgL = COURT.ourBottom - COURT.oppTop;       // 560 (現コート: 16m × 8m)
   const wx = ((sx - cx) / courtSvgW) * COURT_WORLD.width;
   const wz = ((sy - cz) / courtSvgL) * COURT_WORLD.length;
   return { x: wx, z: wz };
+}
+// Inverse of svgToWorld: world (x, z) -> svg (x, y)
+function worldToSvg(wx, wz) {
+  const cx = (COURT.ourLeft + COURT.ourRight) / 2;
+  const cz = (COURT.oppTop + COURT.ourBottom) / 2;
+  const courtSvgW = COURT.ourRight - COURT.ourLeft;
+  const courtSvgL = COURT.ourBottom - COURT.oppTop;
+  const sx = (wx / COURT_WORLD.width) * courtSvgW + cx;
+  const sy = (wz / COURT_WORLD.length) * courtSvgL + cz;
+  return { x: sx, y: sy };
 }
 
 function buildScene(pattern) {
@@ -2247,12 +2262,13 @@ function buildScene(pattern) {
 
   // Players (our + opp) — keep blocker info for course deflection
   currentBlockers.length = 0;
+  playerGroups.length = 0;
   pattern.ourPlayers.forEach(p => {
     const isAttacker = p.id === pattern.attackerId;
     const w = svgToWorld(p.x, p.y);
     const hCm = (typeof p.heightCm === 'number') ? p.heightCm : defaultHeightFor(p.id);
     const blk = !!p.isBlocker;
-    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm, blk);
+    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm, blk, p.id);
     if (blk) {
       currentBlockers.push({ x: w.x, z: w.z, handY: fingertipY(hCm, true), id: p.id, heightCm: hCm });
     }
@@ -2260,7 +2276,7 @@ function buildScene(pattern) {
   pattern.oppPlayers.forEach(p => {
     const w = svgToWorld(p.x, p.y);
     const hCm = (typeof p.heightCm === 'number') ? p.heightCm : 150;
-    addPlayer3D(scene, w.x, w.z, 0x4d6a8a, p.label, false, true, hCm);
+    addPlayer3D(scene, w.x, w.z, 0x4d6a8a, p.label, false, true, hCm, false, p.id);
   });
 
   // Ball
@@ -2392,8 +2408,9 @@ function fingertipY(heightCm, isBlocker) {
   return feet + totalH + armReachAboveShoulder(totalH);
 }
 
-function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150, isBlocker = false) {
+function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150, isBlocker = false, playerId = null) {
   const group = new THREE.Group();
+  group.userData = { playerId, side: isOpp ? 'opp' : 'our', isPlayer: true };
   // 実寸プロポーション (小学生想定)
   const totalH = heightCm / 100;                       // m
   const headR = Math.max(0.07, totalH * 0.067);
@@ -2471,6 +2488,9 @@ function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heigh
 
   group.position.set(x, 0, z);
   scene.add(group);
+  if (playerId) {
+    playerGroups.push({ group, playerId, side: isOpp ? 'opp' : 'our' });
+  }
 }
 
 function makeTextSprite(text) {
@@ -2865,6 +2885,8 @@ function cleanupScene() {
   ballMesh = null;
   ballPole = null;
   courseObjects.length = 0;
+  playerGroups.length = 0;
+  currentBlockers.length = 0;
   if (renderer) {
     renderer.dispose();
     if (renderer.domElement && renderer.domElement.parentNode) {
@@ -2937,6 +2959,104 @@ function initSliders(pattern) {
     arcVal.textContent = '— —';
     highlightSelectedCourse(-1);
   }
+}
+
+// ---------- 3D DRAG PLAYERS ----------
+// 選手をクリック&ドラッグでコート上を移動できる。OrbitControlsの回転は無効化。
+const DRAG_RAYCASTER = new THREE.Raycaster();
+const DRAG_POINTER = new THREE.Vector2();
+const DRAG_FLOOR_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0の床
+
+function setNDC(event, wrap) {
+  const rect = wrap.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  DRAG_POINTER.x =  (x / rect.width)  * 2 - 1;
+  DRAG_POINTER.y = -(y / rect.height) * 2 + 1;
+}
+
+function onPointerDown(event) {
+  if (!camera || !renderer) return;
+  // 左クリックのみ
+  if (event.button !== undefined && event.button !== 0) return;
+  setNDC(event, canvasWrap);
+  DRAG_RAYCASTER.setFromCamera(DRAG_POINTER, camera);
+  // 各playerGroupの全meshを再帰raycast
+  const targets = [];
+  playerGroups.forEach(pg => {
+    pg.group.traverse(obj => {
+      if (obj.isMesh) targets.push(obj);
+    });
+  });
+  const hits = DRAG_RAYCASTER.intersectObjects(targets, false);
+  if (hits.length === 0) return;
+  // 当たったmeshのgroup祖先を探す
+  let node = hits[0].object;
+  while (node && !node.userData?.isPlayer) node = node.parent;
+  if (!node) return;
+  const pg = playerGroups.find(p => p.group === node);
+  if (!pg) return;
+  // ドラッグ開始
+  dragState = pg;
+  if (controls) controls.enabled = false;
+  canvasWrap.style.cursor = 'grabbing';
+  event.preventDefault();
+}
+
+function onPointerMove(event) {
+  if (!dragState || !camera) return;
+  setNDC(event, canvasWrap);
+  DRAG_RAYCASTER.setFromCamera(DRAG_POINTER, camera);
+  const target = new THREE.Vector3();
+  if (DRAG_RAYCASTER.ray.intersectPlane(DRAG_FLOOR_PLANE, target)) {
+    // クランプ:プレイ可能エリア(コート+1m余裕)
+    const halfW = COURT_WORLD.width / 2 + 1;
+    const halfL = COURT_WORLD.length / 2 + 1;
+    const x = Math.max(-halfW, Math.min(halfW, target.x));
+    const z = Math.max(-halfL, Math.min(halfL, target.z));
+    dragState.group.position.x = x;
+    dragState.group.position.z = z;
+  }
+  event.preventDefault();
+}
+
+function onPointerUp(event) {
+  if (!dragState) return;
+  // ドラッグ終了 → SVG座標に逆変換して保存
+  const wx = dragState.group.position.x;
+  const wz = dragState.group.position.z;
+  const svg = worldToSvg(wx, wz);
+  const state = window._volleyState();
+  const pattern = state.patterns[currentIdx];
+  if (pattern) {
+    const list = (dragState.side === 'opp') ? pattern.oppPlayers : pattern.ourPlayers;
+    const player = list.find(p => p.id === dragState.playerId);
+    if (player) {
+      player.x = svg.x;
+      player.y = svg.y;
+      if (window._volleySave) window._volleySave();
+      // ブロック型コースのデフレクション点が変わるのでシーン再構築
+      rebuildSceneFromCurrent();
+      // 2Dカードを更新(3Dを閉じた時にも反映済みだが、ライブで反映したい場合はrenderAll)
+      if (window._volleyRenderAll) window._volleyRenderAll();
+    }
+  }
+  if (controls) controls.enabled = true;
+  canvasWrap.style.cursor = '';
+  dragState = null;
+}
+
+function bindDragHandlers() {
+  // 重複バインド防止
+  unbindDragHandlers();
+  canvasWrap.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+}
+function unbindDragHandlers() {
+  canvasWrap.removeEventListener('pointerdown', onPointerDown);
+  window.removeEventListener('pointermove', onPointerMove);
+  window.removeEventListener('pointerup', onPointerUp);
 }
 
 // ---------- HEIGHTS PANEL ----------
@@ -3092,11 +3212,14 @@ function open3D(idx) {
     applyCameraPreset('overhead', pattern);
     initSliders(pattern);
     renderHeightsPanel(pattern);
+    bindDragHandlers();
     animate();
   });
 }
 
 function close3D() {
+  unbindDragHandlers();
+  dragState = null;
   overlay.classList.remove('show');
   cleanupScene();
   currentIdx = -1;

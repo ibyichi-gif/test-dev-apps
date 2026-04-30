@@ -1,0 +1,2708 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOLLEY FORMATION BOARD v4 — 小学生バレー陣形エディタ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #0a0e14;
+    --bg-panel: #131820;
+    --bg-card: #1a2030;
+    --court-fill: #0f3a2e;
+    --court-out: #1a1410;
+    --court-line: #f5f0e1;
+    --net: #d8d3c0;
+    --attack-line: #5e8579;
+    --accent-our: #f4a72a;
+    --accent-our-glow: rgba(244, 167, 42, 0.55);
+    --accent-attacker: #ef5b3b;
+    --accent-attacker-glow: rgba(239, 91, 59, 0.6);
+    --accent-opp: #4d6a8a;
+    --accent-ball: #fff2c4;
+    --accent-course: #ff5f4a;
+    /* Course shot types */
+    --shot-strike: #ff5f4a;     /* ストレート/強打 - 赤 */
+    --shot-block: #ffd84d;      /* ワンタッチ - 黄 */
+    --shot-loop: #b876ff;       /* ループ - 紫 */
+    --shot-feint: #58d3ff;      /* フェイント - 水色 */
+    --text-main: #e7e3d6;
+    --text-dim: #8a8b7e;
+    --text-faint: #555a52;
+    --line: rgba(245, 240, 225, 0.08);
+    --line-strong: rgba(245, 240, 225, 0.18);
+    --danger: #c44b3a;
+    --good: #6fa86b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg-deep);
+    color: var(--text-main);
+    font-family: "Noto Sans JP", sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body {
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(244, 167, 42, 0.05), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(77, 106, 138, 0.06), transparent 40%);
+  }
+
+  /* ============= HEADER ============= */
+  .topbar {
+    border-bottom: 1px solid var(--line);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    background: rgba(10, 14, 20, 0.85);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .brand { display: flex; align-items: baseline; gap: 14px; }
+  .brand h1 {
+    font-family: "Bebas Neue", sans-serif;
+    font-size: 32px;
+    letter-spacing: 0.18em;
+    color: var(--accent-our);
+    line-height: 1;
+  }
+  .brand .sub {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .topbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .btn {
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--text-main);
+    padding: 9px 16px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    border-radius: 2px;
+  }
+  .btn:hover {
+    background: var(--accent-our);
+    color: var(--bg-deep);
+    border-color: var(--accent-our);
+  }
+  .btn.danger:hover {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+  }
+  .btn.primary {
+    background: var(--accent-our);
+    color: var(--bg-deep);
+    border-color: var(--accent-our);
+    font-weight: 700;
+  }
+  .btn.primary:hover { background: #ffbf4a; border-color: #ffbf4a; }
+
+  /* ============= LEGEND ============= */
+  .legend-bar {
+    display: flex;
+    gap: 18px;
+    padding: 12px 28px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+    align-items: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+  .legend-dot {
+    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+  }
+  .legend-dot.our { background: var(--accent-our); box-shadow: 0 0 6px var(--accent-our-glow); }
+  .legend-dot.attacker { background: var(--accent-attacker); box-shadow: 0 0 6px var(--accent-attacker-glow); }
+  .legend-dot.opp { background: var(--accent-opp); }
+  .legend-dot.ball {
+    background: var(--accent-ball);
+    box-shadow: 0 0 6px rgba(255, 242, 196, 0.6);
+    border: 1px solid #888;
+  }
+  .legend-dot.course {
+    background: var(--accent-course);
+    border-radius: 0;
+    height: 3px;
+    width: 18px;
+  }
+  .legend-hint {
+    margin-left: auto;
+    color: var(--text-faint);
+    font-size: 10px;
+  }
+
+  /* ============= GRID ============= */
+  .board-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    padding: 22px 28px 60px;
+  }
+  @media (max-width: 1280px) { .board-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 800px) {
+    .board-grid { grid-template-columns: 1fr; padding: 18px 14px 60px; }
+    .topbar { padding: 14px 16px; flex-direction: column; align-items: flex-start; }
+    .legend-bar { padding: 10px 16px; }
+  }
+
+  /* ============= CARD ============= */
+  .pattern-card {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.2s ease;
+  }
+  .pattern-card:hover { border-color: var(--line-strong); }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .card-num {
+    font-family: "Bebas Neue", sans-serif;
+    font-size: 22px;
+    color: var(--accent-our);
+    letter-spacing: 0.1em;
+    line-height: 1;
+    min-width: 32px;
+  }
+  .card-title-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-main);
+    font-family: "Noto Sans JP", sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 4px 0;
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.15s ease;
+    width: 100%;
+    min-width: 0;
+  }
+  .card-title-input:hover { border-bottom-color: var(--line-strong); }
+  .card-title-input:focus { outline: none; border-bottom-color: var(--accent-our); }
+
+  .card-actions-mini { display: flex; gap: 4px; }
+  .icon-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    width: 28px; height: 28px;
+    border-radius: 2px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    transition: all 0.15s ease;
+  }
+  .icon-btn:hover { color: var(--accent-our); border-color: var(--accent-our); }
+  .icon-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* ============= MODE TABS ============= */
+  .mode-tabs {
+    display: flex;
+    gap: 1px;
+    padding: 8px 10px 0;
+    background: rgba(0,0,0,0.15);
+  }
+  .mode-tab {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-bottom: none;
+    color: var(--text-dim);
+    padding: 7px 4px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    text-transform: uppercase;
+    border-radius: 2px 2px 0 0;
+    transition: all 0.15s ease;
+  }
+  .mode-tab:hover { color: var(--text-main); }
+  .mode-tab.active {
+    background: var(--bg-deep);
+    color: var(--accent-our);
+    border-color: var(--accent-our);
+  }
+  .mode-hint {
+    padding: 6px 14px 4px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 0.05em;
+    background: rgba(0,0,0,0.15);
+    min-height: 24px;
+  }
+
+  /* ============= COURT ============= */
+  .court-wrap {
+    position: relative;
+    padding: 6px;
+    background: linear-gradient(180deg, #050810 0%, #0a0e14 100%);
+  }
+  .court-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    user-select: none;
+    touch-action: none;
+  }
+  .court-svg.mode-course { cursor: crosshair; }
+
+  /* ============= CONTROLS ============= */
+  .card-controls {
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .control-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .control-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    color: var(--text-faint);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    min-width: 56px;
+  }
+
+  .preset-select, .attacker-select, .num-input {
+    flex: 1;
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    color: var(--text-main);
+    padding: 5px 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    border-radius: 2px;
+    cursor: pointer;
+    min-width: 0;
+  }
+  .preset-select:focus, .attacker-select:focus, .num-input:focus {
+    outline: none;
+    border-color: var(--accent-our);
+  }
+  .num-input {
+    cursor: text;
+    max-width: 70px;
+    text-align: center;
+  }
+
+  .memo-input {
+    width: 100%;
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    color: var(--text-main);
+    padding: 7px 10px;
+    font-family: "Noto Sans JP", sans-serif;
+    font-size: 12px;
+    border-radius: 2px;
+    resize: vertical;
+    min-height: 36px;
+    max-height: 100px;
+    line-height: 1.5;
+  }
+  .memo-input:focus { outline: none; border-color: var(--accent-our); }
+  .memo-input::placeholder { color: var(--text-faint); }
+
+  .small-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    padding: 5px 9px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    transition: all 0.15s ease;
+  }
+  .small-btn:hover { color: var(--accent-our); border-color: var(--accent-our); }
+  .small-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* ============= SVG ELEMENTS ============= */
+  .player-circle {
+    cursor: grab;
+    transition: filter 0.15s ease;
+  }
+  .player-circle:hover { filter: brightness(1.2); }
+  .player-circle.dragging { cursor: grabbing; filter: brightness(1.3); }
+  .player-our { fill: var(--accent-our); stroke: #fff; stroke-width: 1.5; }
+  .player-attacker {
+    fill: var(--accent-attacker);
+    stroke: #fff;
+    stroke-width: 2;
+    filter: drop-shadow(0 0 4px var(--accent-attacker-glow));
+  }
+  .player-opp { fill: var(--accent-opp); stroke: #2a3a50; stroke-width: 1.5; opacity: 0.85; }
+
+  .player-label {
+    fill: #fff;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .ball-circle {
+    fill: var(--accent-ball);
+    stroke: #444;
+    stroke-width: 1;
+    cursor: grab;
+    filter: drop-shadow(0 0 4px rgba(255, 242, 196, 0.5));
+  }
+  .ball-circle.dragging { cursor: grabbing; }
+  .ball-stripe {
+    stroke: #888;
+    stroke-width: 0.8;
+    fill: none;
+    pointer-events: none;
+  }
+
+  .court-out-bg { fill: var(--court-out); }
+  .court-bg { fill: var(--court-fill); }
+  .court-bg-opp { fill: var(--court-fill); opacity: 0.55; }
+  .court-line { stroke: var(--court-line); stroke-width: 1.4; fill: none; }
+  .court-line-attack { stroke: var(--attack-line); stroke-width: 1; fill: none; stroke-dasharray: 3 2; }
+  .net-line {
+    stroke: var(--net);
+    stroke-width: 2;
+    stroke-dasharray: 2 2;
+  }
+  .court-label {
+    fill: var(--text-faint);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    text-anchor: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+  .side-tag {
+    fill: var(--text-faint);
+    font-family: "Bebas Neue", sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-anchor: start;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* ----- course / fan ----- */
+  .course-line {
+    fill: none;
+    stroke-linecap: round;
+    pointer-events: stroke;
+    cursor: pointer;
+  }
+  .course-line:hover {
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
+    stroke-width: 3.2;
+  }
+
+  /* Shot type variants (color + dasharray) */
+  .course-strike { stroke: var(--shot-strike); stroke-width: 2.4; }
+  .course-block  { stroke: var(--shot-block);  stroke-width: 2; stroke-dasharray: 6 3 1 3; }
+  .course-loop   { stroke: var(--shot-loop);   stroke-width: 2; stroke-dasharray: none; }
+  .course-feint  { stroke: var(--shot-feint);  stroke-width: 1.5; stroke-dasharray: 2 3; }
+
+  .course-arrow-strike { fill: var(--shot-strike); }
+  .course-arrow-block  { fill: var(--shot-block); }
+  .course-arrow-loop   { fill: var(--shot-loop); }
+  .course-arrow-feint  { fill: var(--shot-feint); }
+
+  .fan-strike { fill: var(--shot-strike); fill-opacity: 0.18; }
+  .fan-block  { fill: var(--shot-block);  fill-opacity: 0.15; }
+  .fan-loop   { fill: var(--shot-loop);   fill-opacity: 0.16; }
+  .fan-feint  { fill: var(--shot-feint);  fill-opacity: 0.14; }
+
+  .feint-marker {
+    fill: var(--shot-feint);
+    stroke: #fff;
+    stroke-width: 1;
+    pointer-events: none;
+  }
+
+  .course-preview {
+    stroke: #fff;
+    stroke-width: 2;
+    stroke-dasharray: 4 3;
+    fill: none;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+
+  /* Shot type selector chips */
+  .shot-chips {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    flex: 1;
+  }
+  .shot-chip {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    padding: 4px 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .shot-chip:hover { border-color: var(--line-strong); color: var(--text-main); }
+  .shot-chip .swatch {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .shot-chip.active {
+    color: var(--text-main);
+    background: rgba(255,255,255,0.05);
+  }
+  .shot-chip.strike.active { border-color: var(--shot-strike); }
+  .shot-chip.block.active  { border-color: var(--shot-block); }
+  .shot-chip.loop.active   { border-color: var(--shot-loop); }
+  .shot-chip.feint.active  { border-color: var(--shot-feint); }
+  .shot-chip.strike .swatch { background: var(--shot-strike); }
+  .shot-chip.block  .swatch { background: var(--shot-block); }
+  .shot-chip.loop   .swatch { background: var(--shot-loop); }
+  .shot-chip.feint  .swatch { background: var(--shot-feint); }
+
+  /* ============= MODAL ============= */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--bg-card);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    padding: 24px;
+    max-width: 600px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .modal h2 {
+    font-family: "Bebas Neue", sans-serif;
+    font-size: 22px;
+    letter-spacing: 0.15em;
+    color: var(--accent-our);
+    margin-bottom: 16px;
+  }
+  .modal textarea {
+    width: 100%;
+    min-height: 200px;
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    color: var(--text-main);
+    padding: 10px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    border-radius: 2px;
+    line-height: 1.5;
+  }
+  .modal textarea:focus { outline: none; border-color: var(--accent-our); }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+  .modal p { color: var(--text-dim); font-size: 12px; margin-bottom: 12px; line-height: 1.6; }
+
+  /* ============= STATUS ============= */
+  .status-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-our);
+    color: var(--accent-our);
+    padding: 12px 18px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    border-radius: 2px;
+    z-index: 300;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s ease;
+    pointer-events: none;
+  }
+  .status-toast.show { opacity: 1; transform: translateY(0); }
+
+  /* ============= 3D VIEW ============= */
+  .view3d-overlay {
+    position: fixed;
+    inset: 0;
+    background: #050608;
+    display: none;
+    flex-direction: column;
+    z-index: 400;
+  }
+  .view3d-overlay.show { display: flex; }
+  .view3d-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: rgba(10, 14, 20, 0.9);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(8px);
+    flex-wrap: wrap;
+  }
+  .view3d-title {
+    font-family: "Bebas Neue", sans-serif;
+    font-size: 20px;
+    color: var(--accent-our);
+    letter-spacing: 0.15em;
+    margin-right: 8px;
+  }
+  .view3d-pattern-name {
+    font-family: "Noto Sans JP", sans-serif;
+    font-size: 13px;
+    color: var(--text-main);
+    border-left: 1px solid var(--line-strong);
+    padding-left: 12px;
+  }
+  .view3d-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+  .view3d-canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .view3d-canvas-wrap canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .view3d-hint {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    background: rgba(10, 14, 20, 0.7);
+    padding: 8px 14px;
+    border-radius: 2px;
+    border: 1px solid var(--line);
+    pointer-events: none;
+    text-align: center;
+  }
+  .cam-preset {
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--text-main);
+    padding: 7px 12px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    transition: all 0.15s ease;
+  }
+  .cam-preset:hover { background: var(--accent-our); color: var(--bg-deep); border-color: var(--accent-our); }
+  .cam-preset.active { background: var(--accent-our); color: var(--bg-deep); border-color: var(--accent-our); }
+
+  .view3d-controls {
+    background: rgba(13, 18, 28, 0.85);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(8px);
+    padding: 10px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .view3d-cam-row, .view3d-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .slider {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 140px;
+    max-width: 320px;
+    height: 4px;
+    background: var(--bg-deep);
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--accent-our);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 4px var(--accent-our-glow);
+  }
+  .slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--accent-our);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+  .slider:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .slider:disabled::-webkit-slider-thumb { background: var(--text-faint); }
+  .slider-val {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--accent-our);
+    min-width: 60px;
+    text-align: right;
+  }
+  .course-select {
+    background: var(--bg-deep);
+    border: 1px solid var(--line-strong);
+    color: var(--text-main);
+    padding: 5px 8px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    border-radius: 2px;
+    cursor: pointer;
+    min-width: 200px;
+    max-width: 280px;
+  }
+  .course-select:focus { outline: none; border-color: var(--accent-our); }
+
+  .btn-3d {
+    background: linear-gradient(135deg, var(--accent-our) 0%, #d88820 100%);
+    color: var(--bg-deep);
+    border: none;
+    padding: 5px 9px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .btn-3d:hover { filter: brightness(1.15); transform: translateY(-1px); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>VOLLEY FORMATION BOARD</h1>
+    <span class="sub">v4 · 小学生バレー · 16×8m · 6役割(L/C/R/S/LB/RB)</span>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn" id="btnExport">エクスポート</button>
+    <button class="btn" id="btnImport">インポート</button>
+    <button class="btn danger" id="btnResetAll">全リセット</button>
+  </div>
+</header>
+
+<div class="legend-bar">
+  <div class="legend-item"><span class="legend-dot our"></span><span>味方</span></div>
+  <div class="legend-item"><span class="legend-dot attacker"></span><span>アタッカー</span></div>
+  <div class="legend-item"><span class="legend-dot opp"></span><span>相手</span></div>
+  <div class="legend-item"><span class="legend-dot ball"></span><span>ボール</span></div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--shot-strike);box-shadow:0 0 6px var(--shot-strike)"></span><span>強打</span></div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--shot-block)"></span><span>ワンタッチ</span></div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--shot-loop)"></span><span>ループ</span></div>
+  <div class="legend-item"><span class="legend-dot" style="background:var(--shot-feint)"></span><span>フェイント</span></div>
+  <div class="legend-hint">役割: L/C/R/S/LB/RB · ローテなし · ネット2.00m · アタックライン2.7m · 配置:ドラッグ / コース:球種選択→線描画 / 3D:[3D]ボタン</div>
+</div>
+
+<main class="board-grid" id="boardGrid"></main>
+
+<!-- Export/Import Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">エクスポート</h2>
+    <p id="modalDesc">下のテキストをコピーして保存してください。</p>
+    <textarea id="modalTextarea" spellcheck="false"></textarea>
+    <div class="modal-actions">
+      <button class="btn" id="modalCancel">閉じる</button>
+      <button class="btn primary" id="modalConfirm" style="display:none">読み込む</button>
+    </div>
+  </div>
+</div>
+
+<div class="status-toast" id="statusToast"></div>
+
+<!-- 3D View Overlay -->
+<div class="view3d-overlay" id="view3dOverlay">
+  <div class="view3d-topbar">
+    <span class="view3d-title">3D VIEW</span>
+    <span class="view3d-pattern-name" id="view3dPatternName"></span>
+    <div class="view3d-actions">
+      <button class="btn" id="btnExit3d">← 2Dに戻る</button>
+    </div>
+  </div>
+  <div class="view3d-controls">
+    <div class="view3d-cam-row">
+      <span class="control-label">カメラ</span>
+      <button class="cam-preset" data-cam="overhead">俯瞰</button>
+      <button class="cam-preset" data-cam="attacker">アタッカー視点</button>
+      <button class="cam-preset" data-cam="blocker">ブロッカー視点</button>
+      <button class="cam-preset" data-cam="baseline">ベースライン</button>
+      <button class="cam-preset" data-cam="side">サイドライン</button>
+    </div>
+    <div class="view3d-slider-row" id="view3dBallRow">
+      <span class="control-label">ボール高さ</span>
+      <input type="range" class="slider" id="ballHeightSlider" min="0" max="3.5" step="0.05" value="2.5">
+      <span class="slider-val" id="ballHeightVal">2.50 m</span>
+    </div>
+    <div class="view3d-slider-row" id="view3dArcRow">
+      <span class="control-label">コース</span>
+      <select class="course-select" id="courseSelect">
+        <option value="-1">-- なし --</option>
+      </select>
+      <span class="control-label" style="margin-left:10px">山なり</span>
+      <input type="range" class="slider" id="arcSlider" min="0" max="4" step="0.05" value="0" disabled>
+      <span class="slider-val" id="arcVal">0.00 m</span>
+    </div>
+  </div>
+  <div class="view3d-canvas-wrap" id="view3dCanvasWrap">
+    <div class="view3d-hint">マウス左ドラッグ:回転 / ホイール:ズーム / 右ドラッグ:パン</div>
+  </div>
+</div>
+
+<!-- Three.js (loaded only when 3D is opened) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+  }
+}
+</script>
+
+<script>
+/* ============================================================
+   VOLLEY FORMATION BOARD v2
+   - 6 patterns, drag-and-drop player placement (off-court OK)
+   - Ball placement + spike course drawing
+   - Fan-shaped attack range visualization
+============================================================ */
+
+// ---------- COURT GEOMETRY ----------
+// SVG viewBox is enlarged to allow off-court placement
+// Court itself stays in the middle; surrounding 60px of "out" area is usable
+const COURT = {
+  vbW: 480, vbH: 540,
+  // OUR court (lower)
+  ourLeft: 100, ourRight: 380,
+  ourTop: 260,    // net line y
+  ourBottom: 460,
+  ourAttackLine: 320, // 3m line
+  // OPP court (upper)
+  oppTop: 100,
+  oppBottom: 260,
+  oppAttackLine: 200,
+  // playable area (where things can go - includes off-court)
+  playLeft: 10, playRight: 470,
+  playTop: 40, playBottom: 520,
+};
+
+// ---------- DEFAULT POSITIONS (小学生バレー 6ポジション役割モデル) ----------
+// L=レフト, C=センター, R=ライト, S=セッター(ネット際独立), LB=レフトバック, RB=ライトバック
+// ローテーションなし、フリーポジション制
+//
+// 仕様の0〜100座標 → SVG変換:
+//   svgX = 100 + specX * 2.8     (specX=0→ourLeft=100, specX=100→ourRight=380)
+//   svgY = 260 + (specY-50) * 4  (specY=50→net=260, specY=100→endline=460)
+function specToSvg(sx, sy) {
+  return { x: 100 + sx * 2.8, y: 260 + (sy - 50) * 4 };
+}
+function makePlayer(id, sx, sy, role = 'our') {
+  const p = specToSvg(sx, sy);
+  return { id, label: id, x: p.x, y: p.y, role };
+}
+function defaultOurPlayers() {
+  // W型レセプションをデフォルト配置とする
+  return [
+    makePlayer('L',  18, 70),
+    makePlayer('C',  50, 72),
+    makePlayer('R',  82, 70),
+    makePlayer('S',  70, 58),
+    makePlayer('LB', 30, 85),
+    makePlayer('RB', 70, 85),
+  ];
+}
+function defaultOppPlayers() {
+  return [
+    { id: 'O1', label: 'O', x: 150, y: 160, role: 'opp' },
+    { id: 'O2', label: 'O', x: 240, y: 160, role: 'opp' },
+    { id: 'O3', label: 'O', x: 330, y: 160, role: 'opp' },
+    { id: 'O4', label: 'O', x: 240, y: 225, role: 'opp' },
+  ];
+}
+function defaultBall() {
+  // Hidden by default; user activates by drag-from-icon or by clicking "ボール配置"
+  // h = ball height in meters (used in 3D view)
+  return { x: 240, y: 230, visible: false, h: 2.5 };
+}
+
+// Default arc height (meters) per shot type — used in 3D view as initial value
+const DEFAULT_ARC = {
+  strike: 0.0,   // ほぼ直線
+  block:  0.3,   // やや浮く(ワンタッチで失速)
+  loop:   1.5,   // 高く山なり
+  feint:  0.6,   // フワッと落ちる
+};
+
+// ---------- PRESETS (小学生バレー 11陣形 / VOLLEY_IQ v3.0 準拠) ----------
+function buildPlayers(coords) {
+  return coords.map(([id, sx, sy]) => makePlayer(id, sx, sy));
+}
+const PRESETS = {
+  'w-type': {
+    name: '🅰️ W型レセプション',
+    players: buildPlayers([
+      ['L',18,70],['C',50,72],['R',82,70],
+      ['S',70,58],['LB',30,85],['RB',70,85],
+    ]),
+  },
+  'reverse-w': {
+    name: '🅱️ 逆W型レセプション',
+    players: buildPlayers([
+      ['L',30,72],['R',70,72],['S',70,58],
+      ['LB',18,85],['C',50,85],['RB',82,85],
+    ]),
+  },
+  'dig-L-tallS': {
+    name: 'Ⓒ-1 Dig:相手L打ち(S背高)',
+    players: buildPlayers([
+      ['L',15,55],['S',32,55],['R',78,65],
+      ['LB',20,82],['C',50,82],['RB',80,82],
+    ]),
+  },
+  'dig-L-tallC': {
+    name: 'Ⓒ-2 Dig:相手L打ち(C背高)',
+    players: buildPlayers([
+      ['L',15,55],['C',32,55],['R',78,65],
+      ['LB',20,82],['RB',55,82],['S',80,82],
+    ]),
+  },
+  'dig-R-tallS': {
+    name: 'Ⓒ-3 Dig:相手R打ち(S背高)',
+    players: buildPlayers([
+      ['L',22,65],['S',68,55],['R',85,55],
+      ['LB',20,82],['C',50,82],['RB',80,82],
+    ]),
+  },
+  'dig-R-tallC': {
+    name: 'Ⓒ-4 Dig:相手R打ち(C背高)',
+    players: buildPlayers([
+      ['L',22,65],['C',68,55],['R',85,55],
+      ['LB',20,82],['RB',55,82],['S',80,82],
+    ]),
+  },
+  'dig-C-tallS': {
+    name: 'Ⓒ-5 Dig:相手Cクイック(S背高)',
+    players: buildPlayers([
+      ['S',50,55],['L',18,65],['R',82,65],
+      ['LB',20,82],['C',50,82],['RB',80,82],
+    ]),
+  },
+  'dig-C-tallC': {
+    name: 'Ⓒ-6 Dig:相手Cクイック(C背高)',
+    players: buildPlayers([
+      ['C',50,55],['L',18,65],['R',82,65],
+      ['LB',20,82],['RB',55,82],['S',80,82],
+    ]),
+  },
+  'attack-lr': {
+    name: 'Ⓓ 攻撃:LRのみ',
+    players: buildPlayers([
+      ['L',12,72],['C',50,73],['R',88,72],
+      ['S',70,58],['LB',25,85],['RB',75,85],
+    ]),
+  },
+  'attack-lrc': {
+    name: 'Ⓔ 攻撃:LRC全員',
+    players: buildPlayers([
+      ['L',12,72],['C',50,65],['R',88,72],
+      ['S',70,58],['LB',30,87],['RB',70,87],
+    ]),
+  },
+  'neutral': {
+    name: '⚖️ 中立',
+    players: buildPlayers([
+      ['L',18,70],['C',50,72],['R',82,70],
+      ['S',70,58],['LB',30,85],['RB',70,85],
+    ]),
+  },
+};
+
+// ---------- STATE ----------
+// 旧データ(P1-P6)と互換性なし → キーをbumpして強制リセット
+const STORAGE_KEY = 'volley_formation_board_v4_es';
+
+function makeDefaultState() {
+  return {
+    patterns: Array.from({ length: 6 }, (_, i) => ({
+      title: `パターン ${i + 1}`,
+      ourPlayers: defaultOurPlayers(),
+      oppPlayers: defaultOppPlayers(),
+      attackerId: 'L',
+      memo: '',
+      preset: 'w-type',
+      ball: defaultBall(),
+      courses: [],   // { x2,y2, type:'strike'|'block'|'loop'|'feint' }
+      mode: 'place', // 'place' | 'course'
+      halfAngle: 15, // degrees, ± from course line
+      currentShotType: 'strike', // selected shot type for new courses
+    })),
+  };
+}
+
+let state = loadState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return makeDefaultState();
+    const parsed = JSON.parse(raw);
+    if (!parsed.patterns || parsed.patterns.length !== 6) return makeDefaultState();
+    // Backfill new fields if missing
+    parsed.patterns.forEach(p => {
+      if (!p.ball) p.ball = defaultBall();
+      if (typeof p.ball.h !== 'number') p.ball.h = 2.5;
+      if (!Array.isArray(p.courses)) p.courses = [];
+      if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
+      if (!p.mode) p.mode = 'place';
+      if (!p.currentShotType) p.currentShotType = 'strike';
+      // Backfill shot type and arc height for old courses
+      p.courses.forEach(c => {
+        if (!c.type) c.type = 'strike';
+        if (typeof c.arcHeight !== 'number') c.arcHeight = DEFAULT_ARC[c.type] ?? 0;
+      });
+    });
+    return parsed;
+  } catch (e) {
+    return makeDefaultState();
+  }
+}
+
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch (e) { console.warn('保存に失敗', e); }
+}
+
+// ---------- RENDER ----------
+const boardGrid = document.getElementById('boardGrid');
+
+function renderAll() {
+  boardGrid.innerHTML = '';
+  state.patterns.forEach((pattern, idx) => {
+    boardGrid.appendChild(renderPattern(pattern, idx));
+  });
+}
+
+function renderPattern(pattern, idx) {
+  const card = document.createElement('div');
+  card.className = 'pattern-card';
+  card.dataset.idx = idx;
+
+  // Header
+  const head = document.createElement('div');
+  head.className = 'card-head';
+  head.innerHTML = `
+    <span class="card-num">${String(idx + 1).padStart(2, '0')}</span>
+    <input class="card-title-input" type="text" value="${escapeHtml(pattern.title)}" data-action="title" maxlength="40">
+    <button class="btn-3d" data-action="open-3d" title="このパターンを3Dで見る">3D</button>
+    <div class="card-actions-mini">
+      <button class="icon-btn" title="左右反転" data-action="mirror">⇄</button>
+      <button class="icon-btn danger" title="このパターンをリセット" data-action="reset-one">↺</button>
+    </div>
+  `;
+  card.appendChild(head);
+
+  // Mode tabs
+  const tabs = document.createElement('div');
+  tabs.className = 'mode-tabs';
+  tabs.innerHTML = `
+    <button class="mode-tab ${pattern.mode==='place'?'active':''}" data-mode="place">▶ 配置</button>
+    <button class="mode-tab ${pattern.mode==='course'?'active':''}" data-mode="course">→ コース</button>
+  `;
+  card.appendChild(tabs);
+
+  // Mode hint
+  const hint = document.createElement('div');
+  hint.className = 'mode-hint';
+  hint.dataset.role = 'hint';
+  hint.textContent = modeHintText(pattern);
+  card.appendChild(hint);
+
+  // Court
+  const courtWrap = document.createElement('div');
+  courtWrap.className = 'court-wrap';
+  courtWrap.appendChild(buildCourtSvg(pattern, idx));
+  card.appendChild(courtWrap);
+
+  // Controls
+  const controls = document.createElement('div');
+  controls.className = 'card-controls';
+
+  // Preset row
+  const presetRow = document.createElement('div');
+  presetRow.className = 'control-row';
+  const presetOptions = Object.entries(PRESETS).map(([key, v]) =>
+    `<option value="${key}" ${pattern.preset === key ? 'selected' : ''}>${v.name}</option>`
+  ).join('');
+  presetRow.innerHTML = `
+    <span class="control-label">陣形</span>
+    <select class="preset-select" data-action="preset">${presetOptions}</select>
+  `;
+  controls.appendChild(presetRow);
+
+  // Attacker row
+  const attackerRow = document.createElement('div');
+  attackerRow.className = 'control-row';
+  const attackerOptions = pattern.ourPlayers.map(p =>
+    `<option value="${p.id}" ${pattern.attackerId === p.id ? 'selected' : ''}>${p.label}</option>`
+  ).join('');
+  attackerRow.innerHTML = `
+    <span class="control-label">アタッカー</span>
+    <select class="attacker-select" data-action="attacker">${attackerOptions}</select>
+  `;
+  controls.appendChild(attackerRow);
+
+  // Ball/course row
+  const ballRow = document.createElement('div');
+  ballRow.className = 'control-row';
+  ballRow.innerHTML = `
+    <span class="control-label">ボール</span>
+    <button class="small-btn" data-action="toggle-ball">${pattern.ball.visible ? '非表示' : '配置'}</button>
+    <span class="control-label" style="margin-left:6px">高さ</span>
+    <input class="num-input" type="number" min="0" max="3.5" step="0.1" value="${pattern.ball.h?.toFixed(1) ?? '2.5'}" data-action="ball-height" title="3D表示時のボールの高さ(m)">
+    <span class="control-label" style="margin-left:6px">範囲±°</span>
+    <input class="num-input" type="number" min="0" max="60" step="1" value="${pattern.halfAngle}" data-action="half-angle">
+    <button class="small-btn danger" data-action="clear-courses" title="コースを全削除">コース消去</button>
+  `;
+  controls.appendChild(ballRow);
+
+  // Shot type chips (only meaningful in course mode, but always shown for visibility)
+  const shotTypes = [
+    { key: 'strike', label: '強打' },
+    { key: 'block',  label: 'ワンタッチ' },
+    { key: 'loop',   label: 'ループ' },
+    { key: 'feint',  label: 'フェイント' },
+  ];
+  const shotRow = document.createElement('div');
+  shotRow.className = 'control-row';
+  const chipsHtml = shotTypes.map(s =>
+    `<button class="shot-chip ${s.key} ${pattern.currentShotType === s.key ? 'active' : ''}" data-action="shot-type" data-shot="${s.key}">
+      <span class="swatch"></span>${s.label}
+    </button>`
+  ).join('');
+  shotRow.innerHTML = `
+    <span class="control-label">球種</span>
+    <div class="shot-chips">${chipsHtml}</div>
+  `;
+  controls.appendChild(shotRow);
+
+  // Memo
+  const memo = document.createElement('textarea');
+  memo.className = 'memo-input';
+  memo.placeholder = 'メモ:この陣形のねらい・場面など';
+  memo.value = pattern.memo || '';
+  memo.dataset.action = 'memo';
+  controls.appendChild(memo);
+
+  card.appendChild(controls);
+
+  wireCardEvents(card, idx);
+  return card;
+}
+
+function modeHintText(pattern) {
+  const shotLabels = { strike: '強打', block: 'ワンタッチ', loop: 'ループ', feint: 'フェイント' };
+  if (pattern.mode === 'place') {
+    return '配置モード:選手・ボールをドラッグ(コート外OK)';
+  } else {
+    if (!pattern.ball.visible) {
+      return 'コースモード:先にボールを配置してください';
+    }
+    return `コースモード [${shotLabels[pattern.currentShotType] || '強打'}]:ボールからドラッグして描画 / 線をクリックで削除`;
+  }
+}
+
+function buildCourtSvg(pattern, idx) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${COURT.vbW} ${COURT.vbH}`);
+  svg.setAttribute('class', `court-svg ${pattern.mode === 'course' ? 'mode-course' : ''}`);
+  svg.setAttribute('xmlns', ns);
+  svg.dataset.idx = idx;
+
+  // Outer playable area (slightly different bg to indicate off-court area)
+  appendRect(svg, 0, 0, COURT.vbW, COURT.vbH, 'court-out-bg');
+
+  // Opp court
+  appendRect(svg, COURT.ourLeft, COURT.oppTop, COURT.ourRight - COURT.ourLeft,
+             COURT.oppBottom - COURT.oppTop, 'court-bg-opp');
+  // Our court
+  appendRect(svg, COURT.ourLeft, COURT.ourTop, COURT.ourRight - COURT.ourLeft,
+             COURT.ourBottom - COURT.ourTop, 'court-bg');
+
+  // Outlines
+  appendRect(svg, COURT.ourLeft, COURT.oppTop, COURT.ourRight - COURT.ourLeft,
+             COURT.oppBottom - COURT.oppTop, 'court-line', true);
+  appendRect(svg, COURT.ourLeft, COURT.ourTop, COURT.ourRight - COURT.ourLeft,
+             COURT.ourBottom - COURT.ourTop, 'court-line', true);
+  appendLine(svg, COURT.ourLeft, COURT.ourAttackLine, COURT.ourRight, COURT.ourAttackLine, 'court-line-attack');
+  appendLine(svg, COURT.ourLeft, COURT.oppAttackLine, COURT.ourRight, COURT.oppAttackLine, 'court-line-attack');
+  appendLine(svg, COURT.ourLeft - 12, COURT.ourTop, COURT.ourRight + 12, COURT.ourTop, 'net-line');
+
+  // Side labels
+  appendText(svg, 12, 60, 'side-tag', 'OPP');
+  appendText(svg, 12, COURT.vbH - 24, 'side-tag', 'US');
+  appendText(svg, COURT.vbW / 2, COURT.ourTop - 6, 'court-label', '— NET —');
+
+  // ----- Course fans (drawn first so under lines) -----
+  pattern.courses.forEach((c, ci) => {
+    const fanPath = buildFanPath(pattern.ball.x, pattern.ball.y, c.x2, c.y2, pattern.halfAngle, c.type);
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', fanPath);
+    path.setAttribute('class', `course-fan fan-${c.type || 'strike'}`);
+    svg.appendChild(path);
+  });
+
+  // ----- Course lines + arrows (style varies by shot type) -----
+  pattern.courses.forEach((c, ci) => {
+    const g = document.createElementNS(ns, 'g');
+    const type = c.type || 'strike';
+    const courseEl = buildCourseLineElement(pattern.ball.x, pattern.ball.y, c.x2, c.y2, type);
+    courseEl.dataset.courseIdx = ci;
+    g.appendChild(courseEl);
+
+    // Arrow head (skip for feint - it gets a marker instead)
+    if (type !== 'feint') {
+      const arrow = buildArrowHead(pattern.ball.x, pattern.ball.y, c.x2, c.y2, type);
+      if (arrow) {
+        const poly = document.createElementNS(ns, 'polygon');
+        poly.setAttribute('points', arrow);
+        poly.setAttribute('class', `course-line-arrow course-arrow-${type}`);
+        g.appendChild(poly);
+      }
+    } else {
+      // Feint: drop marker (X) at endpoint
+      const marker = createFeintMarker(c.x2, c.y2);
+      g.appendChild(marker);
+    }
+
+    // Click to delete
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm('このコース線を削除しますか?')) {
+        state.patterns[idx].courses.splice(ci, 1);
+        saveState();
+        rerenderPatternKeepingFocus(idx);
+      }
+    });
+    svg.appendChild(g);
+  });
+
+  // ----- Course preview line (drawn while dragging) -----
+  // (created on the fly during drag)
+
+  // Opp players
+  pattern.oppPlayers.forEach(p => {
+    svg.appendChild(createPlayerGroup(p, idx, 'opp'));
+  });
+
+  // Our players
+  pattern.ourPlayers.forEach(p => {
+    const isAttacker = p.id === pattern.attackerId;
+    svg.appendChild(createPlayerGroup(p, idx, isAttacker ? 'attacker' : 'our'));
+  });
+
+  // Ball (drawn last so always on top)
+  if (pattern.ball.visible) {
+    svg.appendChild(createBallGroup(pattern.ball, idx));
+  }
+
+  // Setup course-mode handlers on the SVG itself
+  setupCourseModeHandlers(svg, idx);
+
+  return svg;
+}
+
+// ---------- COURSE FAN ----------
+// Build SVG path for a fan (filled wedge) starting at ball, centered on course line, ±halfAngle deg
+// For 'loop' type, the fan radiates further (since loops travel slower but reach deep)
+// For 'feint', the fan is small (short range)
+function buildFanPath(bx, by, tx, ty, halfAngleDeg, type) {
+  const dx = tx - bx;
+  const dy = ty - by;
+  const baseAngle = Math.atan2(dy, dx);
+  const half = halfAngleDeg * Math.PI / 180;
+  let len = Math.max(60, Math.sqrt(dx*dx + dy*dy));
+  // Per-type tweaks
+  if (type === 'feint') len *= 0.7;
+  const a1 = baseAngle - half;
+  const a2 = baseAngle + half;
+  const p1x = bx + Math.cos(a1) * len;
+  const p1y = by + Math.sin(a1) * len;
+  const p2x = bx + Math.cos(a2) * len;
+  const p2y = by + Math.sin(a2) * len;
+  return `M ${bx} ${by} L ${p1x} ${p1y} A ${len} ${len} 0 0 1 ${p2x} ${p2y} Z`;
+}
+
+// Build SVG element representing the course line based on shot type
+// - strike: straight line (heavy)
+// - block: zigzag (deflected)
+// - loop: curved path (parabolic arc)
+// - feint: short dotted line (handled by CSS dasharray)
+function buildCourseLineElement(bx, by, tx, ty, type) {
+  const ns = 'http://www.w3.org/2000/svg';
+  if (type === 'block') {
+    // Zigzag along the course direction
+    return buildZigzagLine(bx, by, tx, ty);
+  } else if (type === 'loop') {
+    // Parabolic arc (curve up over the path)
+    return buildLoopArc(bx, by, tx, ty);
+  } else {
+    // strike or feint: straight line
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', bx);
+    line.setAttribute('y1', by);
+    line.setAttribute('x2', tx);
+    line.setAttribute('y2', ty);
+    line.setAttribute('class', `course-line course-${type}`);
+    return line;
+  }
+}
+
+function buildZigzagLine(bx, by, tx, ty) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const dx = tx - bx, dy = ty - by;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  const ux = dx / len, uy = dy / len;
+  const px = -uy, py = ux; // perpendicular
+  // 4 zigzag segments
+  const segments = 4;
+  const amp = Math.min(8, len * 0.08);
+  let d = `M ${bx} ${by}`;
+  for (let i = 1; i <= segments; i++) {
+    const t = i / segments;
+    const cx = bx + dx * t;
+    const cy = by + dy * t;
+    const sign = (i % 2 === 0) ? 1 : -1;
+    // Place control point with perpendicular offset (only at intermediate points)
+    if (i === segments) {
+      d += ` L ${tx} ${ty}`;
+    } else {
+      d += ` L ${cx + px * amp * sign} ${cy + py * amp * sign}`;
+    }
+  }
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('class', 'course-line course-block');
+  return path;
+}
+
+function buildLoopArc(bx, by, tx, ty) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const dx = tx - bx, dy = ty - by;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  // Control point: midway between ball and target, offset perpendicular (above the line)
+  // We pick the offset that lifts the curve "upward" in the visual sense (toward smaller y)
+  const mx = (bx + tx) / 2;
+  const my = (by + ty) / 2;
+  const ux = dx / len, uy = dy / len;
+  // Perpendicular - choose the one with smaller y component (visually upward)
+  let px = -uy, py = ux;
+  if (py > 0) { px = -px; py = -py; }
+  const arcAmp = Math.min(40, len * 0.3);
+  const cx = mx + px * arcAmp;
+  const cy = my + py * arcAmp;
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', `M ${bx} ${by} Q ${cx} ${cy} ${tx} ${ty}`);
+  path.setAttribute('class', 'course-line course-loop');
+  return path;
+}
+
+function buildArrowHead(bx, by, tx, ty, type) {
+  const dx = tx - bx;
+  const dy = ty - by;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  if (len < 8) return null;
+  // For loop: angle of arrow should match the curve's tangent at the end (approximate)
+  let ux = dx / len, uy = dy / len;
+  if (type === 'loop') {
+    // Approximate tangent at end: from control point to end
+    // Control point was offset perpendicular by ±arcAmp; tangent direction tilts slightly
+    // For simplicity, use line direction (still looks OK)
+  }
+  const px = -uy, py = ux;
+  const size = 7;
+  const back = 9;
+  const x1 = tx, y1 = ty;
+  const x2 = tx - back * ux + (size * 0.6) * px;
+  const y2 = ty - back * uy + (size * 0.6) * py;
+  const x3 = tx - back * ux - (size * 0.6) * px;
+  const y3 = ty - back * uy - (size * 0.6) * py;
+  return `${x1},${y1} ${x2},${y2} ${x3},${y3}`;
+}
+
+function createFeintMarker(x, y) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('transform', `translate(${x}, ${y})`);
+  // small filled circle + cross
+  const c = document.createElementNS(ns, 'circle');
+  c.setAttribute('r', 4);
+  c.setAttribute('class', 'feint-marker');
+  g.appendChild(c);
+  // X mark inside
+  const l1 = document.createElementNS(ns, 'line');
+  l1.setAttribute('x1', -2.5); l1.setAttribute('y1', -2.5);
+  l1.setAttribute('x2', 2.5); l1.setAttribute('y2', 2.5);
+  l1.setAttribute('stroke', '#fff'); l1.setAttribute('stroke-width', '1');
+  g.appendChild(l1);
+  const l2 = document.createElementNS(ns, 'line');
+  l2.setAttribute('x1', -2.5); l2.setAttribute('y1', 2.5);
+  l2.setAttribute('x2', 2.5); l2.setAttribute('y2', -2.5);
+  l2.setAttribute('stroke', '#fff'); l2.setAttribute('stroke-width', '1');
+  g.appendChild(l2);
+  return g;
+}
+
+// ---------- PLAYER ----------
+function createPlayerGroup(p, idx, kind) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('class', 'player-group');
+  g.setAttribute('transform', `translate(${p.x}, ${p.y})`);
+  g.dataset.playerId = p.id;
+  g.dataset.kind = kind;
+
+  const r = kind === 'attacker' ? 14 : 12;
+  const c = document.createElementNS(ns, 'circle');
+  c.setAttribute('r', r);
+  c.setAttribute('cx', 0);
+  c.setAttribute('cy', 0);
+  c.setAttribute('class', `player-circle player-${kind}`);
+  g.appendChild(c);
+
+  const t = document.createElementNS(ns, 'text');
+  t.setAttribute('class', 'player-label');
+  t.setAttribute('x', 0);
+  t.setAttribute('y', 0);
+  t.textContent = p.label;
+  g.appendChild(t);
+
+  attachPlayerDrag(g, idx, p.id, kind);
+  return g;
+}
+
+function createBallGroup(ball, idx) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('transform', `translate(${ball.x}, ${ball.y})`);
+  g.dataset.kind = 'ball';
+
+  const c = document.createElementNS(ns, 'circle');
+  c.setAttribute('r', 8);
+  c.setAttribute('cx', 0);
+  c.setAttribute('cy', 0);
+  c.setAttribute('class', 'ball-circle');
+  g.appendChild(c);
+
+  // Stripes
+  const stripe1 = document.createElementNS(ns, 'path');
+  stripe1.setAttribute('d', 'M -7 -3 Q 0 0 7 -3');
+  stripe1.setAttribute('class', 'ball-stripe');
+  g.appendChild(stripe1);
+  const stripe2 = document.createElementNS(ns, 'path');
+  stripe2.setAttribute('d', 'M -7 3 Q 0 0 7 3');
+  stripe2.setAttribute('class', 'ball-stripe');
+  g.appendChild(stripe2);
+
+  attachBallDrag(g, idx);
+  return g;
+}
+
+// ---------- DRAG: PLAYERS ----------
+function attachPlayerDrag(group, patternIdx, playerId, kind) {
+  let dragData = null;
+
+  function getSvgPoint(svg, evt) {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX;
+    pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function onPointerDown(evt) {
+    // Only allow dragging in 'place' mode
+    if (state.patterns[patternIdx].mode !== 'place') return;
+    evt.preventDefault();
+    evt.stopPropagation();
+
+    const svg = group.ownerSVGElement;
+    const p = getSvgPoint(svg, evt);
+    const pattern = state.patterns[patternIdx];
+    const playerArr = kind === 'opp' ? pattern.oppPlayers : pattern.ourPlayers;
+    const player = playerArr.find(pp => pp.id === playerId);
+    if (!player) return;
+
+    dragData = {
+      svg,
+      offsetX: p.x - player.x,
+      offsetY: p.y - player.y,
+      pointerId: evt.pointerId,
+    };
+    group.classList.add('dragging');
+    group.setPointerCapture(evt.pointerId);
+  }
+
+  function onPointerMove(evt) {
+    if (!dragData) return;
+    const p = getSvgPoint(dragData.svg, evt);
+    const pattern = state.patterns[patternIdx];
+    const playerArr = kind === 'opp' ? pattern.oppPlayers : pattern.ourPlayers;
+    const player = playerArr.find(pp => pp.id === playerId);
+    if (!player) return;
+
+    let newX = p.x - dragData.offsetX;
+    let newY = p.y - dragData.offsetY;
+
+    // Constrain to playable area only (allows off-court)
+    const margin = 14;
+    newX = clamp(newX, COURT.playLeft + margin, COURT.playRight - margin);
+
+    if (kind === 'opp') {
+      // Keep opp on opp side (above net) but allow off-court vertically
+      newY = clamp(newY, COURT.playTop + margin, COURT.ourTop - margin);
+    } else {
+      // Keep our players on our side (below net) but allow off-court
+      newY = clamp(newY, COURT.ourTop + margin, COURT.playBottom - margin);
+    }
+
+    player.x = newX;
+    player.y = newY;
+    group.setAttribute('transform', `translate(${newX}, ${newY})`);
+  }
+
+  function onPointerUp(evt) {
+    if (!dragData) return;
+    group.classList.remove('dragging');
+    try { group.releasePointerCapture(dragData.pointerId); } catch (e) {}
+    dragData = null;
+    saveState();
+  }
+
+  group.addEventListener('pointerdown', onPointerDown);
+  group.addEventListener('pointermove', onPointerMove);
+  group.addEventListener('pointerup', onPointerUp);
+  group.addEventListener('pointercancel', onPointerUp);
+}
+
+// ---------- DRAG: BALL ----------
+function attachBallDrag(group, patternIdx) {
+  let dragData = null;
+
+  function getSvgPoint(svg, evt) {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX;
+    pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function onPointerDown(evt) {
+    // Ball is draggable in 'place' mode only
+    if (state.patterns[patternIdx].mode !== 'place') {
+      // In course mode, let event bubble to SVG so user can start drawing from ball
+      return;
+    }
+    evt.preventDefault();
+    evt.stopPropagation();
+
+    const svg = group.ownerSVGElement;
+    const p = getSvgPoint(svg, evt);
+    const ball = state.patterns[patternIdx].ball;
+
+    dragData = {
+      svg,
+      offsetX: p.x - ball.x,
+      offsetY: p.y - ball.y,
+      pointerId: evt.pointerId,
+    };
+    group.classList.add('dragging');
+    group.setPointerCapture(evt.pointerId);
+  }
+
+  function onPointerMove(evt) {
+    if (!dragData) return;
+    const p = getSvgPoint(dragData.svg, evt);
+    const ball = state.patterns[patternIdx].ball;
+    const margin = 10;
+    ball.x = clamp(p.x - dragData.offsetX, COURT.playLeft + margin, COURT.playRight - margin);
+    ball.y = clamp(p.y - dragData.offsetY, COURT.playTop + margin, COURT.playBottom - margin);
+    group.setAttribute('transform', `translate(${ball.x}, ${ball.y})`);
+  }
+
+  function onPointerUp(evt) {
+    if (!dragData) return;
+    group.classList.remove('dragging');
+    try { group.releasePointerCapture(dragData.pointerId); } catch (e) {}
+    dragData = null;
+    saveState();
+    // Re-render so course fans/lines follow the new ball position
+    rerenderPatternKeepingFocus(patternIdx);
+  }
+
+  group.addEventListener('pointerdown', onPointerDown);
+  group.addEventListener('pointermove', onPointerMove);
+  group.addEventListener('pointerup', onPointerUp);
+  group.addEventListener('pointercancel', onPointerUp);
+}
+
+// ---------- COURSE MODE: draw on SVG ----------
+function setupCourseModeHandlers(svg, idx) {
+  let drawData = null;
+  let previewLine = null;
+
+  function getSvgPoint(evt) {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX;
+    pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function onPointerDown(evt) {
+    const pattern = state.patterns[idx];
+    if (pattern.mode !== 'course') return;
+    if (!pattern.ball.visible) {
+      showToast('先にボールを配置してください');
+      return;
+    }
+    // Only start drawing if not on a player or course line
+    // (ball is allowed - user often starts drawing from the ball)
+    const target = evt.target;
+    if (target.closest('.player-group') ||
+        target.classList.contains('course-line')) return;
+
+    evt.preventDefault();
+
+    const p = getSvgPoint(evt);
+    const ball = pattern.ball;
+    drawData = {
+      pointerId: evt.pointerId,
+      x2: p.x, y2: p.y,
+    };
+
+    // Create preview line
+    const ns = 'http://www.w3.org/2000/svg';
+    previewLine = document.createElementNS(ns, 'line');
+    previewLine.setAttribute('x1', ball.x);
+    previewLine.setAttribute('y1', ball.y);
+    previewLine.setAttribute('x2', p.x);
+    previewLine.setAttribute('y2', p.y);
+    previewLine.setAttribute('class', 'course-preview');
+    svg.appendChild(previewLine);
+
+    try { svg.setPointerCapture(evt.pointerId); } catch(e) {}
+  }
+
+  function onPointerMove(evt) {
+    if (!drawData) return;
+    const p = getSvgPoint(evt);
+    drawData.x2 = p.x;
+    drawData.y2 = p.y;
+    if (previewLine) {
+      previewLine.setAttribute('x2', p.x);
+      previewLine.setAttribute('y2', p.y);
+    }
+  }
+
+  function onPointerUp(evt) {
+    if (!drawData) return;
+    const pattern = state.patterns[idx];
+    const ball = pattern.ball;
+    const dx = drawData.x2 - ball.x;
+    const dy = drawData.y2 - ball.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    // Cleanup preview
+    if (previewLine && previewLine.parentNode) {
+      previewLine.parentNode.removeChild(previewLine);
+    }
+    previewLine = null;
+
+    try { svg.releasePointerCapture(drawData.pointerId); } catch(e) {}
+
+    // If drag was too short, cancel
+    if (dist < 12) {
+      drawData = null;
+      return;
+    }
+
+    // Add course
+    pattern.courses.push({
+      x2: drawData.x2,
+      y2: drawData.y2,
+      type: pattern.currentShotType || 'strike',
+      arcHeight: DEFAULT_ARC[pattern.currentShotType] ?? 0,
+    });
+    drawData = null;
+    saveState();
+    rerenderPatternKeepingFocus(idx);
+  }
+
+  svg.addEventListener('pointerdown', onPointerDown);
+  svg.addEventListener('pointermove', onPointerMove);
+  svg.addEventListener('pointerup', onPointerUp);
+  svg.addEventListener('pointercancel', onPointerUp);
+}
+
+// ---------- CARD EVENTS ----------
+function wireCardEvents(card, idx) {
+  const titleInput = card.querySelector('[data-action="title"]');
+  titleInput.addEventListener('input', (e) => {
+    state.patterns[idx].title = e.target.value;
+    saveState();
+  });
+
+  card.querySelector('[data-action="mirror"]').addEventListener('click', () => {
+    mirrorPattern(idx);
+  });
+
+  card.querySelector('[data-action="reset-one"]').addEventListener('click', () => {
+    if (confirm(`「${state.patterns[idx].title}」を初期状態にもどしますか?`)) {
+      resetPattern(idx);
+    }
+  });
+
+  card.querySelector('[data-action="preset"]').addEventListener('change', (e) => {
+    applyPreset(idx, e.target.value);
+  });
+
+  card.querySelector('[data-action="attacker"]').addEventListener('change', (e) => {
+    state.patterns[idx].attackerId = e.target.value;
+    saveState();
+    rerenderPatternKeepingFocus(idx);
+  });
+
+  card.querySelector('[data-action="memo"]').addEventListener('input', (e) => {
+    state.patterns[idx].memo = e.target.value;
+    saveState();
+  });
+
+  // Mode tabs
+  card.querySelectorAll('.mode-tab').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const mode = btn.dataset.mode;
+      state.patterns[idx].mode = mode;
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+    });
+  });
+
+  // Toggle ball
+  card.querySelector('[data-action="toggle-ball"]').addEventListener('click', (e) => {
+    const p = state.patterns[idx];
+    p.ball.visible = !p.ball.visible;
+    if (!p.ball.visible) {
+      // Hiding ball also clears courses
+      p.courses = [];
+    }
+    saveState();
+    rerenderPatternKeepingFocus(idx);
+  });
+
+  // Half angle
+  const halfAngleInput = card.querySelector('[data-action="half-angle"]');
+  halfAngleInput.addEventListener('input', (e) => {
+    let v = parseFloat(e.target.value);
+    if (isNaN(v)) v = 15;
+    v = clamp(v, 0, 60);
+    state.patterns[idx].halfAngle = v;
+    saveState();
+    rerenderPatternKeepingFocus(idx);
+  });
+
+  // Ball height
+  const ballHeightInput = card.querySelector('[data-action="ball-height"]');
+  ballHeightInput.addEventListener('input', (e) => {
+    let v = parseFloat(e.target.value);
+    if (isNaN(v)) v = 2.5;
+    v = clamp(v, 0, 3.5);
+    state.patterns[idx].ball.h = v;
+    saveState();
+    // No re-render needed - height is only used in 3D
+  });
+
+  // Clear courses
+  card.querySelector('[data-action="clear-courses"]').addEventListener('click', () => {
+    if (state.patterns[idx].courses.length === 0) return;
+    if (confirm('全てのコース線を削除しますか?')) {
+      state.patterns[idx].courses = [];
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+    }
+  });
+
+  // Shot type chips
+  card.querySelectorAll('[data-action="shot-type"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.patterns[idx].currentShotType = btn.dataset.shot;
+      // If user is in place mode, switch to course mode automatically
+      if (state.patterns[idx].mode !== 'course') {
+        state.patterns[idx].mode = 'course';
+      }
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+    });
+  });
+
+  // Open 3D view
+  card.querySelector('[data-action="open-3d"]').addEventListener('click', () => {
+    open3DView(idx);
+  });
+}
+
+function rerenderPatternKeepingFocus(idx) {
+  const old = boardGrid.children[idx];
+  const newCard = renderPattern(state.patterns[idx], idx);
+  boardGrid.replaceChild(newCard, old);
+}
+
+// ---------- ACTIONS ----------
+function applyPreset(idx, presetKey) {
+  const preset = PRESETS[presetKey];
+  if (!preset) return;
+  state.patterns[idx].ourPlayers = JSON.parse(JSON.stringify(preset.players));
+  state.patterns[idx].preset = presetKey;
+  if (!state.patterns[idx].ourPlayers.find(p => p.id === state.patterns[idx].attackerId)) {
+    state.patterns[idx].attackerId = state.patterns[idx].ourPlayers[0].id;
+  }
+  saveState();
+  rerenderPatternKeepingFocus(idx);
+}
+
+function mirrorPattern(idx) {
+  const center = (COURT.ourLeft + COURT.ourRight) / 2;
+  const p = state.patterns[idx];
+  p.ourPlayers.forEach(pp => { pp.x = center * 2 - pp.x; });
+  p.oppPlayers.forEach(pp => { pp.x = center * 2 - pp.x; });
+  if (p.ball) { p.ball.x = center * 2 - p.ball.x; }
+  p.courses.forEach(c => { c.x2 = center * 2 - c.x2; });
+  saveState();
+  rerenderPatternKeepingFocus(idx);
+}
+
+function resetPattern(idx) {
+  const fresh = makeDefaultState().patterns[idx];
+  fresh.title = state.patterns[idx].title;
+  state.patterns[idx] = fresh;
+  saveState();
+  rerenderPatternKeepingFocus(idx);
+}
+
+// ---------- TOP BAR ACTIONS ----------
+document.getElementById('btnResetAll').addEventListener('click', () => {
+  if (confirm('全6パターンを初期状態にもどします。よろしいですか?')) {
+    state = makeDefaultState();
+    saveState();
+    renderAll();
+    showToast('全パターンをリセットしました');
+  }
+});
+
+document.getElementById('btnExport').addEventListener('click', () => {
+  const json = JSON.stringify(state, null, 2);
+  openModal('エクスポート', '下のテキストをコピーして保存してください。読み込みは「インポート」ボタンから。', json, false);
+});
+
+document.getElementById('btnImport').addEventListener('click', () => {
+  openModal('インポート', '保存したJSONを貼り付けて「読み込む」を押してください。', '', true);
+});
+
+// ---------- MODAL ----------
+const modalOverlay = document.getElementById('modalOverlay');
+const modalTitle = document.getElementById('modalTitle');
+const modalDesc = document.getElementById('modalDesc');
+const modalTextarea = document.getElementById('modalTextarea');
+const modalConfirm = document.getElementById('modalConfirm');
+const modalCancel = document.getElementById('modalCancel');
+
+function openModal(title, desc, text, allowImport) {
+  modalTitle.textContent = title;
+  modalDesc.textContent = desc;
+  modalTextarea.value = text;
+  modalTextarea.readOnly = !allowImport;
+  modalConfirm.style.display = allowImport ? 'inline-block' : 'none';
+  modalOverlay.classList.add('show');
+  if (!allowImport) modalTextarea.select();
+}
+function closeModal() { modalOverlay.classList.remove('show'); }
+modalCancel.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', (e) => {
+  if (e.target === modalOverlay) closeModal();
+});
+modalConfirm.addEventListener('click', () => {
+  try {
+    const parsed = JSON.parse(modalTextarea.value);
+    if (!parsed.patterns || !Array.isArray(parsed.patterns) || parsed.patterns.length !== 6) {
+      throw new Error('形式が正しくありません');
+    }
+    // Backfill new fields
+    parsed.patterns.forEach(p => {
+      if (!p.ball) p.ball = defaultBall();
+      if (typeof p.ball.h !== 'number') p.ball.h = 2.5;
+      if (!Array.isArray(p.courses)) p.courses = [];
+      if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
+      if (!p.mode) p.mode = 'place';
+      if (!p.currentShotType) p.currentShotType = 'strike';
+      p.courses.forEach(c => {
+        if (!c.type) c.type = 'strike';
+        if (typeof c.arcHeight !== 'number') c.arcHeight = DEFAULT_ARC[c.type] ?? 0;
+      });
+    });
+    state = parsed;
+    saveState();
+    renderAll();
+    closeModal();
+    showToast('インポートしました');
+  } catch (e) {
+    alert('読み込みに失敗しました: ' + e.message);
+  }
+});
+
+// ---------- UTIL ----------
+function appendRect(svg, x, y, w, h, cls, outlineOnly = false) {
+  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  r.setAttribute('x', x); r.setAttribute('y', y);
+  r.setAttribute('width', w); r.setAttribute('height', h);
+  r.setAttribute('class', cls);
+  if (outlineOnly) r.setAttribute('fill', 'none');
+  svg.appendChild(r);
+  return r;
+}
+function appendLine(svg, x1, y1, x2, y2, cls) {
+  const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+  l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+  l.setAttribute('class', cls);
+  svg.appendChild(l);
+  return l;
+}
+function appendText(svg, x, y, cls, txt) {
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  t.setAttribute('x', x); t.setAttribute('y', y);
+  t.setAttribute('class', cls);
+  t.textContent = txt;
+  svg.appendChild(t);
+  return t;
+}
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+// ---------- TOAST ----------
+const toast = document.getElementById('statusToast');
+let toastTimer = null;
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+}
+
+// ---------- 3D VIEW ENTRY POINT ----------
+// open3DView is defined later in a module script.
+// Provide a stub here that queues the call until the module loads.
+window._pending3DOpen = null;
+function open3DView(idx) {
+  if (window._open3DViewImpl) {
+    window._open3DViewImpl(idx);
+  } else {
+    window._pending3DOpen = idx;
+    showToast('3Dビューを準備中...');
+  }
+}
+
+// Expose state for the 3D module
+window._volleyState = function() { return state; };
+window._volleyCourt = COURT;
+window._volleyDefaultArc = DEFAULT_ARC;
+window._volleySave = saveState;
+window._volleyRenderAll = renderAll;
+
+// ---------- INIT ----------
+renderAll();
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================
+   3D VOLLEYBALL VIEW
+   - Renders one selected pattern in 3D
+   - Court is 9m × 18m (real proportions); we map SVG coords to world
+   - Camera presets: overhead, attacker POV, blocker POV, baseline, side
+============================================================ */
+
+const COURT = window._volleyCourt;
+const DEFAULT_ARC = window._volleyDefaultArc;
+const overlay = document.getElementById('view3dOverlay');
+const canvasWrap = document.getElementById('view3dCanvasWrap');
+const patternNameEl = document.getElementById('view3dPatternName');
+const btnExit = document.getElementById('btnExit3d');
+
+let scene, camera, renderer, controls;
+let currentIdx = -1;
+let animationId = null;
+
+// References for live update
+let ballMesh = null;
+let ballPole = null;       // dashed vertical line under ball
+const courseObjects = [];  // Array of {tube, ring, fan, courseIdx}
+
+// World scale (小学生バレー): court 16m × 8m, net 2.00m, attack line 2.7m
+// 1 SVG unit ≈ 8/280 m ≈ 0.0286 m
+// We'll use meters directly and convert SVG -> world
+const COURT_WORLD = {
+  width: 8,      // x (横8m)
+  length: 16,    // z (縦16m, along net direction)
+  netHeight: 2.00,         // 小学生男女共通
+  attackLineFromNet: 2.7,  // 小学生は2.7m(一般3mより短い)
+};
+
+function svgToWorld(sx, sy) {
+  // Court center in SVG is ((ourLeft+ourRight)/2, (oppTop+ourBottom)/2)
+  const cx = (COURT.ourLeft + COURT.ourRight) / 2;
+  const cz = (COURT.oppTop + COURT.ourBottom) / 2;
+  // SVG: x grows right, y grows down
+  // World: x = SVG x mapped to court width, z = SVG y mapped to court length
+  const courtSvgW = COURT.ourRight - COURT.ourLeft;       // 280
+  const courtSvgL = COURT.ourBottom - COURT.oppTop;       // 360
+  const wx = ((sx - cx) / courtSvgW) * COURT_WORLD.width;
+  const wz = ((sy - cz) / courtSvgL) * COURT_WORLD.length;
+  return { x: wx, z: wz };
+}
+
+function buildScene(pattern) {
+  // Clean up previous scene
+  cleanupScene();
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0e14);
+  scene.fog = new THREE.Fog(0x0a0e14, 25, 80);
+
+  // Camera
+  const w = canvasWrap.clientWidth;
+  const h = canvasWrap.clientHeight;
+  camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 200);
+  camera.position.set(15, 12, 15);
+
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(w, h);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Remove old canvas if any
+  while (canvasWrap.firstChild && canvasWrap.firstChild.tagName === 'CANVAS') {
+    canvasWrap.removeChild(canvasWrap.firstChild);
+  }
+  canvasWrap.insertBefore(renderer.domElement, canvasWrap.firstChild);
+
+  // Controls
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.target.set(0, 1, 0);
+  controls.minDistance = 3;
+  controls.maxDistance = 60;
+  controls.maxPolarAngle = Math.PI * 0.49; // can't go below floor
+
+  // Lights
+  const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+  scene.add(ambient);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.85);
+  dir.position.set(8, 18, 6);
+  dir.castShadow = true;
+  dir.shadow.mapSize.set(1024, 1024);
+  dir.shadow.camera.left = -15;
+  dir.shadow.camera.right = 15;
+  dir.shadow.camera.top = 15;
+  dir.shadow.camera.bottom = -15;
+  scene.add(dir);
+  // Subtle backlight
+  const fill = new THREE.DirectionalLight(0xa0b8d8, 0.25);
+  fill.position.set(-8, 10, -8);
+  scene.add(fill);
+
+  // Floor (gym floor)
+  const floorGeo = new THREE.PlaneGeometry(40, 50);
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 0.95 });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Court
+  buildCourt3D(scene);
+
+  // Net
+  buildNet3D(scene);
+
+  // Players (our + opp)
+  pattern.ourPlayers.forEach(p => {
+    const isAttacker = p.id === pattern.attackerId;
+    const w = svgToWorld(p.x, p.y);
+    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker);
+  });
+  pattern.oppPlayers.forEach(p => {
+    const w = svgToWorld(p.x, p.y);
+    addPlayer3D(scene, w.x, w.z, 0x4d6a8a, p.label, false, true);
+  });
+
+  // Ball
+  if (pattern.ball.visible) {
+    const w = svgToWorld(pattern.ball.x, pattern.ball.y);
+    const ballH = (typeof pattern.ball.h === 'number') ? pattern.ball.h : 2.5;
+    addBall3D(scene, w.x, ballH, w.z);
+
+    // Courses
+    pattern.courses.forEach((c, ci) => {
+      const target = svgToWorld(c.x2, c.y2);
+      const arcH = (typeof c.arcHeight === 'number') ? c.arcHeight : (DEFAULT_ARC[c.type] ?? 0);
+      addCourse3D(scene, w.x, ballH, w.z, target.x, target.z, c.type || 'strike', pattern.halfAngle, arcH, ci);
+    });
+  }
+
+  return { scene, camera, renderer, controls };
+}
+
+function buildCourt3D(scene) {
+  // Court surface
+  const courtGeo = new THREE.PlaneGeometry(COURT_WORLD.width, COURT_WORLD.length);
+  const courtMat = new THREE.MeshStandardMaterial({ color: 0x0f3a2e, roughness: 0.85 });
+  const court = new THREE.Mesh(courtGeo, courtMat);
+  court.rotation.x = -Math.PI / 2;
+  court.position.y = 0.005;
+  court.receiveShadow = true;
+  scene.add(court);
+
+  // Lines
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xf5f0e1 });
+  const halfW = COURT_WORLD.width / 2;
+  const halfL = COURT_WORLD.length / 2;
+  const y = 0.01;
+
+  // Outline
+  const outline = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-halfW, y, -halfL),
+    new THREE.Vector3( halfW, y, -halfL),
+    new THREE.Vector3( halfW, y,  halfL),
+    new THREE.Vector3(-halfW, y,  halfL),
+    new THREE.Vector3(-halfW, y, -halfL),
+  ]);
+  scene.add(new THREE.Line(outline, lineMat));
+
+  // Center line (under net)
+  const center = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-halfW, y, 0),
+    new THREE.Vector3( halfW, y, 0),
+  ]);
+  scene.add(new THREE.Line(center, lineMat));
+
+  // Attack lines (小学生は2.7m from net on each side)
+  const aLine = COURT_WORLD.attackLineFromNet;
+  const attLineMat = new THREE.LineDashedMaterial({ color: 0x5e8579, dashSize: 0.3, gapSize: 0.2 });
+  const att1 = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-halfW, y, -aLine),
+    new THREE.Vector3( halfW, y, -aLine),
+  ]);
+  const att1Line = new THREE.Line(att1, attLineMat);
+  att1Line.computeLineDistances();
+  scene.add(att1Line);
+
+  const att2 = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-halfW, y,  aLine),
+    new THREE.Vector3( halfW, y,  aLine),
+  ]);
+  const att2Line = new THREE.Line(att2, attLineMat);
+  att2Line.computeLineDistances();
+  scene.add(att2Line);
+}
+
+function buildNet3D(scene) {
+  // Net posts
+  const postGeo = new THREE.CylinderGeometry(0.06, 0.06, COURT_WORLD.netHeight + 0.5, 12);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6, roughness: 0.4 });
+  const halfW = COURT_WORLD.width / 2;
+  const post1 = new THREE.Mesh(postGeo, postMat);
+  post1.position.set(-halfW - 0.3, (COURT_WORLD.netHeight + 0.5) / 2, 0);
+  post1.castShadow = true;
+  scene.add(post1);
+  const post2 = post1.clone();
+  post2.position.x = halfW + 0.3;
+  scene.add(post2);
+
+  // Net (semitransparent plane with grid texture using a canvas)
+  const netCanvas = document.createElement('canvas');
+  netCanvas.width = 256; netCanvas.height = 64;
+  const ctx = netCanvas.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0)';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.strokeStyle = '#d8d3c0';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 256; i += 8) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 64); ctx.stroke();
+  }
+  for (let j = 0; j <= 64; j += 8) {
+    ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(256, j); ctx.stroke();
+  }
+  // Top white band
+  ctx.fillStyle = '#f5f0e1';
+  ctx.fillRect(0, 0, 256, 5);
+  ctx.fillRect(0, 59, 256, 5);
+
+  const netTex = new THREE.CanvasTexture(netCanvas);
+  netTex.wrapS = THREE.RepeatWrapping;
+  netTex.repeat.x = 1;
+  const netMat = new THREE.MeshBasicMaterial({
+    map: netTex,
+    transparent: true,
+    side: THREE.DoubleSide,
+    alphaTest: 0.05,
+  });
+  const netGeo = new THREE.PlaneGeometry(COURT_WORLD.width + 0.6, 1.0);
+  const net = new THREE.Mesh(netGeo, netMat);
+  net.position.set(0, COURT_WORLD.netHeight - 0.5, 0);
+  scene.add(net);
+}
+
+function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false) {
+  const group = new THREE.Group();
+  // Body (cylinder)
+  const bodyGeo = new THREE.CylinderGeometry(0.25, 0.3, 1.5, 16);
+  const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.75;
+  body.castShadow = true;
+  group.add(body);
+  // Head (sphere)
+  const headGeo = new THREE.SphereGeometry(0.22, 16, 12);
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.y = 1.7;
+  head.castShadow = true;
+  group.add(head);
+  // Glow ring under attacker
+  if (isAttacker) {
+    const ringGeo = new THREE.RingGeometry(0.4, 0.5, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xef5b3b, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    group.add(ring);
+  }
+  // Label sprite
+  const sprite = makeTextSprite(label);
+  sprite.position.y = 2.3;
+  group.add(sprite);
+
+  group.position.set(x, 0, z);
+  scene.add(group);
+}
+
+function makeTextSprite(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(10,14,20,0.85)';
+  ctx.fillRect(0, 0, 128, 64);
+  ctx.strokeStyle = '#f4a72a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, 126, 62);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 36px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 64, 32);
+  const tex = new THREE.CanvasTexture(canvas);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.8, 0.4, 1);
+  return sprite;
+}
+
+function addBall3D(scene, x, y, z) {
+  const geo = new THREE.SphereGeometry(0.21, 24, 18);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xfff2c4, roughness: 0.4, emissive: 0x554a30, emissiveIntensity: 0.3 });
+  const ball = new THREE.Mesh(geo, mat);
+  ball.position.set(x, y, z);
+  ball.castShadow = true;
+  scene.add(ball);
+  ballMesh = ball;
+  // Cast a faint vertical line down to the floor (so 3D position is clear)
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(x, 0.01, z),
+    new THREE.Vector3(x, y, z),
+  ]);
+  const lineMat = new THREE.LineDashedMaterial({ color: 0xfff2c4, dashSize: 0.15, gapSize: 0.1, opacity: 0.5, transparent: true });
+  const line = new THREE.Line(lineGeo, lineMat);
+  line.computeLineDistances();
+  scene.add(line);
+  ballPole = line;
+}
+
+function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, courseIdx) {
+  // Target lands on the court (y=0)
+  const targetY = 0.05;
+  const colorHex = {
+    strike: 0xff5f4a,
+    block:  0xffd84d,
+    loop:   0xb876ff,
+    feint:  0x58d3ff,
+  }[type] || 0xff5f4a;
+
+  const dx = tx - bx, dz = tz - bz;
+  const horizDist = Math.sqrt(dx*dx + dz*dz);
+
+  // Build trajectory points
+  // Base trajectory: parabolic from (bx, by, bz) to (tx, targetY, tz)
+  // Peak height = midpoint elevation between by and targetY, plus arcHeight bump above the chord
+  const segments = 32;
+  const points = [];
+
+  // The "chord" goes linearly from start height by to end height targetY
+  // We add a parabolic bump that peaks at midpoint with magnitude = arcHeight
+  // Special: for 'block' type, also add a small lateral wobble (deflection feel)
+  let lateralWobble = 0;
+  if (type === 'block') lateralWobble = 0.25;
+
+  // Perpendicular in XZ plane (for wobble)
+  let px = 0, pz = 0;
+  if (horizDist > 0.001) {
+    const ux = dx / horizDist, uz = dz / horizDist;
+    px = -uz; pz = ux;
+  }
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    // Linear interpolation in XZ
+    const x = bx + dx * t;
+    const z = bz + dz * t;
+    // Height: linear chord + parabolic bump
+    const chord = by * (1 - t) + targetY * t;
+    const bump = 4 * t * (1 - t) * arcHeight; // peaks at t=0.5 with value = arcHeight
+    let y = chord + bump;
+    // Block wobble (lateral)
+    let xx = x, zz = z;
+    if (lateralWobble > 0) {
+      const wob = Math.sin(t * Math.PI * 4) * lateralWobble * (1 - t * 0.6);
+      xx += px * wob;
+      zz += pz * wob;
+    }
+    points.push(new THREE.Vector3(xx, y, zz));
+  }
+
+  // Build tube geometry along curve for visibility
+  const curve = new THREE.CatmullRomCurve3(points);
+  const tubeGeo = new THREE.TubeGeometry(curve, 40, 0.04, 8, false);
+  const tubeMat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    emissive: colorHex,
+    emissiveIntensity: 0.55,
+    roughness: 0.3,
+  });
+  const tube = new THREE.Mesh(tubeGeo, tubeMat);
+  scene.add(tube);
+
+  // Landing marker on the floor
+  const ringGeo = new THREE.RingGeometry(0.12, 0.22, 24);
+  const ringMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(tx, 0.02, tz);
+  scene.add(ring);
+
+  // Fan area on the floor (the "possible landing range")
+  const fan = buildFanFloor3D(scene, bx, bz, tx, tz, halfAngleDeg, colorHex, type);
+
+  // Register for live updates
+  courseObjects.push({ tube, tubeGeo, ring, fan, courseIdx });
+}
+
+function buildFanFloor3D(scene, bx, bz, tx, tz, halfAngleDeg, color, type) {
+  const dx = tx - bx, dz = tz - bz;
+  const baseAngle = Math.atan2(dz, dx);
+  const half = halfAngleDeg * Math.PI / 180;
+  let len = Math.sqrt(dx*dx + dz*dz);
+  if (type === 'feint') len *= 0.7;
+
+  // Create a flat fan-shaped plane on the floor
+  const segments = 32;
+  const vertices = [];
+  const indices = [];
+  // Center vertex at ball horizontal projection
+  vertices.push(bx, 0.015, bz);
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const a = baseAngle - half + t * (2 * half);
+    vertices.push(bx + Math.cos(a) * len, 0.015, bz + Math.sin(a) * len);
+  }
+  for (let i = 1; i <= segments; i++) {
+    indices.push(0, i, i + 1);
+  }
+  const fanGeo = new THREE.BufferGeometry();
+  fanGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  fanGeo.setIndex(indices);
+  fanGeo.computeVertexNormals();
+  const fanMat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.18,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const fan = new THREE.Mesh(fanGeo, fanMat);
+  scene.add(fan);
+  return fan;
+}
+
+// ---------- CAMERA PRESETS ----------
+function applyCameraPreset(name, pattern) {
+  if (!camera || !controls) return;
+
+  // Find attacker world position
+  const attacker = pattern.ourPlayers.find(p => p.id === pattern.attackerId);
+  const attackerW = attacker ? svgToWorld(attacker.x, attacker.y) : { x: 0, z: 5 };
+
+  // Find a generic blocker (front-court opp player closest to net)
+  let blocker = pattern.oppPlayers[0];
+  let minDist = Infinity;
+  pattern.oppPlayers.forEach(p => {
+    const w = svgToWorld(p.x, p.y);
+    const d = Math.abs(w.z); // closest to net (z=0)
+    if (d < minDist) { minDist = d; blocker = p; }
+  });
+  const blockerW = svgToWorld(blocker.x, blocker.y);
+
+  switch (name) {
+    case 'overhead':
+      camera.position.set(0, 22, 0.01);
+      controls.target.set(0, 0, 0);
+      break;
+    case 'attacker':
+      // Behind attacker, looking toward opponent court
+      camera.position.set(attackerW.x, 2.2, attackerW.z + 1.5);
+      controls.target.set(attackerW.x * 0.3, 1.5, -2);
+      break;
+    case 'blocker':
+      // Behind blocker (on opp side), looking toward our court
+      camera.position.set(blockerW.x, 2.5, blockerW.z - 1.5);
+      controls.target.set(blockerW.x * 0.3, 1.5, 3);
+      break;
+    case 'baseline':
+      // Far end of our side, looking forward
+      camera.position.set(0, 2.5, 11);
+      controls.target.set(0, 1, 0);
+      break;
+    case 'side':
+      // Sideline view
+      camera.position.set(14, 4.5, 0);
+      controls.target.set(0, 1.5, 0);
+      break;
+  }
+
+  // Highlight active button
+  document.querySelectorAll('.cam-preset').forEach(b => {
+    b.classList.toggle('active', b.dataset.cam === name);
+  });
+
+  controls.update();
+}
+
+// ---------- LIFECYCLE ----------
+function cleanupScene() {
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+  // Clear references
+  ballMesh = null;
+  ballPole = null;
+  courseObjects.length = 0;
+  if (renderer) {
+    renderer.dispose();
+    if (renderer.domElement && renderer.domElement.parentNode) {
+      renderer.domElement.parentNode.removeChild(renderer.domElement);
+    }
+    renderer = null;
+  }
+  if (scene) {
+    scene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+    });
+    scene = null;
+  }
+  controls = null;
+  camera = null;
+}
+
+function animate() {
+  animationId = requestAnimationFrame(animate);
+  if (controls) controls.update();
+  if (renderer && scene && camera) renderer.render(scene, camera);
+}
+
+function onResize() {
+  if (!renderer || !camera) return;
+  const w = canvasWrap.clientWidth;
+  const h = canvasWrap.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener('resize', onResize);
+
+// ---------- LIVE SLIDER UPDATES ----------
+const ballHeightSlider = document.getElementById('ballHeightSlider');
+const ballHeightVal = document.getElementById('ballHeightVal');
+const courseSelect = document.getElementById('courseSelect');
+const arcSlider = document.getElementById('arcSlider');
+const arcVal = document.getElementById('arcVal');
+
+function initSliders(pattern) {
+  // Ball height
+  const h = (typeof pattern.ball.h === 'number') ? pattern.ball.h : 2.5;
+  ballHeightSlider.value = h;
+  ballHeightVal.textContent = h.toFixed(2) + ' m';
+
+  // Course list
+  courseSelect.innerHTML = '<option value="-1">-- なし --</option>';
+  pattern.courses.forEach((c, i) => {
+    const labels = { strike: '強打', block: 'ワンタッチ', loop: 'ループ', feint: 'フェイント' };
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `#${i + 1} ${labels[c.type] || '?'}`;
+    courseSelect.appendChild(opt);
+  });
+
+  // Auto-select first course if any
+  if (pattern.courses.length > 0) {
+    courseSelect.value = '0';
+    syncArcSliderToCourse(0, pattern);
+  } else {
+    courseSelect.value = '-1';
+    arcSlider.disabled = true;
+    arcSlider.value = 0;
+    arcVal.textContent = '— —';
+  }
+}
+
+function syncArcSliderToCourse(courseIdx, pattern) {
+  const c = pattern.courses[courseIdx];
+  if (!c) {
+    arcSlider.disabled = true;
+    arcSlider.value = 0;
+    arcVal.textContent = '— —';
+    return;
+  }
+  const arc = (typeof c.arcHeight === 'number') ? c.arcHeight : (DEFAULT_ARC[c.type] ?? 0);
+  arcSlider.disabled = false;
+  arcSlider.value = arc;
+  arcVal.textContent = arc.toFixed(2) + ' m';
+}
+
+ballHeightSlider.addEventListener('input', (e) => {
+  if (currentIdx < 0) return;
+  const state = window._volleyState();
+  const pattern = state.patterns[currentIdx];
+  const h = parseFloat(e.target.value);
+  pattern.ball.h = h;
+  ballHeightVal.textContent = h.toFixed(2) + ' m';
+  // Persist via the shared saveState (it's a global function on window)
+  if (window._volleySave) window._volleySave();
+  // Rebuild scene to update ball height + recalculate trajectories
+  rebuildSceneFromCurrent();
+});
+
+courseSelect.addEventListener('change', (e) => {
+  if (currentIdx < 0) return;
+  const state = window._volleyState();
+  const pattern = state.patterns[currentIdx];
+  const idx = parseInt(e.target.value, 10);
+  syncArcSliderToCourse(idx, pattern);
+});
+
+arcSlider.addEventListener('input', (e) => {
+  if (currentIdx < 0) return;
+  const state = window._volleyState();
+  const pattern = state.patterns[currentIdx];
+  const courseIdx = parseInt(courseSelect.value, 10);
+  if (courseIdx < 0 || !pattern.courses[courseIdx]) return;
+  const arc = parseFloat(e.target.value);
+  pattern.courses[courseIdx].arcHeight = arc;
+  arcVal.textContent = arc.toFixed(2) + ' m';
+  if (window._volleySave) window._volleySave();
+  rebuildSceneFromCurrent();
+});
+
+function rebuildSceneFromCurrent() {
+  if (currentIdx < 0 || !scene) return;
+  const state = window._volleyState();
+  const pattern = state.patterns[currentIdx];
+  // Save current camera position so user doesn't lose their angle
+  const savedPos = camera ? camera.position.clone() : null;
+  const savedTarget = controls ? controls.target.clone() : null;
+  buildScene(pattern);
+  if (savedPos && camera) camera.position.copy(savedPos);
+  if (savedTarget && controls) controls.target.copy(savedTarget);
+  if (controls) controls.update();
+}
+
+// ---------- ENTRY ----------
+function open3D(idx) {
+  const state = window._volleyState();
+  const pattern = state.patterns[idx];
+  if (!pattern) return;
+  currentIdx = idx;
+
+  patternNameEl.textContent = `${String(idx + 1).padStart(2, '0')} · ${pattern.title}`;
+  overlay.classList.add('show');
+
+  // Build after overlay is visible (so canvas size is correct)
+  requestAnimationFrame(() => {
+    buildScene(pattern);
+    applyCameraPreset('overhead', pattern);
+    initSliders(pattern);
+    animate();
+  });
+}
+
+function close3D() {
+  overlay.classList.remove('show');
+  cleanupScene();
+  currentIdx = -1;
+  // Refresh 2D so any height/arc changes from 3D are reflected on the cards
+  if (window._volleyRenderAll) window._volleyRenderAll();
+}
+
+// Wire close button
+btnExit.addEventListener('click', close3D);
+
+// Escape key closes
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && overlay.classList.contains('show')) {
+    close3D();
+  }
+});
+
+// Camera preset buttons
+document.querySelectorAll('.cam-preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (currentIdx < 0) return;
+    const state = window._volleyState();
+    const pattern = state.patterns[currentIdx];
+    applyCameraPreset(btn.dataset.cam, pattern);
+  });
+});
+
+// Expose
+window._open3DViewImpl = open3D;
+
+// Process any pending open
+if (window._pending3DOpen !== null && window._pending3DOpen !== undefined) {
+  const idx = window._pending3DOpen;
+  window._pending3DOpen = null;
+  open3D(idx);
+}
+</script>
+</body>
+</html>

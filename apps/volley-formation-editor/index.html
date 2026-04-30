@@ -802,29 +802,47 @@
   }
   .view3d-controls .heights-grid {
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
-    gap: 4px 8px;
+    grid-template-columns: auto 1fr auto auto auto;
+    gap: 4px 6px;
     padding: 8px 10px;
     align-items: center;
   }
-  .view3d-controls .heights-grid .blk-toggle {
+  .view3d-controls .heights-grid .pose-toggle {
     cursor: pointer;
     user-select: none;
     font-family: "JetBrains Mono", monospace;
-    font-size: 10px;
+    font-size: 11px;
     padding: 3px 6px;
     border: 1px solid var(--line-strong);
     border-radius: 2px;
     color: var(--text-dim);
     transition: all 0.15s;
     text-align: center;
-    min-width: 28px;
+    min-width: 26px;
+    line-height: 1;
   }
-  .view3d-controls .heights-grid .blk-toggle.active {
+  .view3d-controls .heights-grid .pose-toggle.blk.active {
     background: #58d3ff;
     color: var(--bg-deep);
     border-color: #58d3ff;
   }
+  .view3d-controls .heights-grid .pose-toggle.spk.active {
+    background: #ff5f4a;
+    color: #fff;
+    border-color: #ff5f4a;
+  }
+  .view3d-controls .heights-grid .section-head {
+    grid-column: 1 / -1;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--accent-our);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 3px;
+    margin-top: 6px;
+  }
+  .view3d-controls .heights-grid .section-head:first-child { margin-top: 0; }
   .view3d-controls .heights-grid .role-tag {
     font-family: "JetBrains Mono", monospace;
     font-size: 10px;
@@ -1066,7 +1084,7 @@ function defaultHeightFor(id) {
 }
 function makePlayer(id, sx, sy, role = 'our') {
   const p = specToSvg(sx, sy);
-  return { id, label: id, x: p.x, y: p.y, role, heightCm: defaultHeightFor(id), isBlocker: false };
+  return { id, label: id, x: p.x, y: p.y, role, heightCm: defaultHeightFor(id), isBlocker: false, isSpiker: false };
 }
 function defaultOurPlayers() {
   // W型レセプションをデフォルト配置とする
@@ -1080,12 +1098,12 @@ function defaultOurPlayers() {
   ];
 }
 function defaultOppPlayers() {
-  // 相手側 (y < net=380): 3人並びと1人セッターのデフォルト
+  // 相手側 (y < net=380): L/C/R 前衛(160cm) + S セッター(155cm)。アタッカー想定
   return [
-    { id: 'O1', label: 'O', x: 150, y: 220, role: 'opp' },
-    { id: 'O2', label: 'O', x: 240, y: 200, role: 'opp' },
-    { id: 'O3', label: 'O', x: 330, y: 220, role: 'opp' },
-    { id: 'O4', label: 'O', x: 240, y: 320, role: 'opp' },
+    { id: 'OL', label: 'OL', x: 150, y: 220, role: 'opp', heightCm: 160, isBlocker: false, isSpiker: false },
+    { id: 'OC', label: 'OC', x: 240, y: 200, role: 'opp', heightCm: 155, isBlocker: false, isSpiker: false },
+    { id: 'OR', label: 'OR', x: 330, y: 220, role: 'opp', heightCm: 160, isBlocker: false, isSpiker: false },
+    { id: 'OS', label: 'OS', x: 240, y: 320, role: 'opp', heightCm: 155, isBlocker: false, isSpiker: false },
   ];
 }
 function defaultBall() {
@@ -1190,8 +1208,8 @@ const PRESETS = {
 
 // ---------- STATE ----------
 // 旧データ(P1-P6)と互換性なし → キーをbumpして強制リセット
-// _es: 6役割モデル / _es2: コート縦横比 1:2 (16x8m) に変更後 — 古いSVG座標を破棄
-const STORAGE_KEY = 'volley_formation_board_v4_es2';
+// _es: 6役割モデル / _es2: コート縦横比 1:2 / _es3: 相手選手にid OL/OC/OR/OSを付与
+const STORAGE_KEY = 'volley_formation_board_v4_es3';
 
 function makeDefaultState() {
   return {
@@ -1231,10 +1249,16 @@ function loadState() {
       if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
       if (!p.mode) p.mode = 'place';
       if (!p.currentShotType) p.currentShotType = 'strike';
-      // Backfill heightCm / isBlocker for existing players (saved before features)
+      // Backfill heightCm / isBlocker / isSpiker for existing players
       (p.ourPlayers || []).forEach(pl => {
         if (typeof pl.heightCm !== 'number') pl.heightCm = defaultHeightFor(pl.id);
         if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
+        if (typeof pl.isSpiker !== 'boolean') pl.isSpiker = false;
+      });
+      (p.oppPlayers || []).forEach(pl => {
+        if (typeof pl.heightCm !== 'number') pl.heightCm = 155;
+        if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
+        if (typeof pl.isSpiker !== 'boolean') pl.isSpiker = false;
       });
       // Backfill shot type and arc height for old courses
       p.courses.forEach(c => {
@@ -2409,15 +2433,21 @@ function buildScene(pattern) {
     const w = svgToWorld(p.x, p.y);
     const hCm = (typeof p.heightCm === 'number') ? p.heightCm : defaultHeightFor(p.id);
     const blk = !!p.isBlocker;
-    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm, blk, p.id);
-    if (blk) {
+    const spk = !!p.isSpiker;
+    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm, blk, p.id, spk);
+    if (blk && !spk) {
       currentBlockers.push({ x: w.x, z: w.z, handY: fingertipY(hCm, true), id: p.id, heightCm: hCm });
     }
   });
   pattern.oppPlayers.forEach(p => {
     const w = svgToWorld(p.x, p.y);
-    const hCm = (typeof p.heightCm === 'number') ? p.heightCm : 150;
-    addPlayer3D(scene, w.x, w.z, 0x4d6a8a, p.label, false, true, hCm, false, p.id);
+    const hCm = (typeof p.heightCm === 'number') ? p.heightCm : 155;
+    const blk = !!p.isBlocker;
+    const spk = !!p.isSpiker;
+    addPlayer3D(scene, w.x, w.z, 0x4d6a8a, p.label, false, true, hCm, blk, p.id, spk);
+    if (blk && !spk) {
+      currentBlockers.push({ x: w.x, z: w.z, handY: fingertipY(hCm, true), id: p.id, heightCm: hCm });
+    }
   });
 
   // Ball
@@ -2539,17 +2569,23 @@ function buildNet3D(scene) {
 
 // 肩〜指先までの長さ(腕を真上に伸ばした時) ≈ 全身の0.43倍
 function armReachAboveShoulder(totalH) { return totalH * 0.43; }
-// ブロックジャンプ高さ(地面から足までの距離)
+// ブロックジャンプ高さ
 const BLOCK_JUMP_H = 0.30;
+// スパイクジャンプ高さ(ブロックよりやや高め)
+const SPIKE_JUMP_H = 0.40;
 
 // 立位/ジャンプ時の指先到達高さ(地面から)
-function fingertipY(heightCm, isBlocker) {
+function fingertipY(heightCm, isBlocker, isSpiker = false) {
   const totalH = heightCm / 100;
-  const feet = isBlocker ? BLOCK_JUMP_H : 0;
+  let feet = 0;
+  if (isSpiker) feet = SPIKE_JUMP_H;
+  else if (isBlocker) feet = BLOCK_JUMP_H;
   return feet + totalH + armReachAboveShoulder(totalH);
 }
 
-function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150, isBlocker = false, playerId = null) {
+function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150, isBlocker = false, playerId = null, isSpiker = false) {
+  // スパイクとブロックは排他
+  if (isSpiker) isBlocker = false;
   const group = new THREE.Group();
   group.userData = { playerId, side: isOpp ? 'opp' : 'our', isPlayer: true };
   // 実寸プロポーション (小学生想定)
@@ -2559,8 +2595,10 @@ function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heigh
   const hipR = shoulderR * 0.92;
   const bodyH = totalH - headR * 2;
 
-  // Block時はジャンプ
-  const feetY = isBlocker ? BLOCK_JUMP_H : 0;
+  // ジャンプ姿勢 (スパイク > ブロック > 立位)
+  let feetY = 0;
+  if (isSpiker) feetY = SPIKE_JUMP_H;
+  else if (isBlocker) feetY = BLOCK_JUMP_H;
   const bodyCenterY = feetY + bodyH / 2;
   const headCenterY = feetY + bodyH + headR;
   const shoulderY = feetY + bodyH;
@@ -2609,6 +2647,44 @@ function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heigh
     group.add(jumpRing);
   }
 
+  // Spike時のフォーム(片腕真上に伸ばす + 反対の腕は前下方)
+  if (isSpiker) {
+    const armR = shoulderR * 0.22;
+    const armLen = armReachAboveShoulder(totalH);
+    const handGeo = new THREE.SphereGeometry(armR * 1.6, 10, 8);
+    const handMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
+    // 利き腕(右、+x方向)を真上に — ヒッティングアーム
+    const upArmGeo = new THREE.CylinderGeometry(armR, armR * 0.85, armLen, 10);
+    const upArm = new THREE.Mesh(upArmGeo, bodyMat);
+    upArm.position.set(shoulderR * 0.65, shoulderY + armLen / 2, 0);
+    upArm.castShadow = true;
+    group.add(upArm);
+    const upHand = new THREE.Mesh(handGeo, handMat);
+    upHand.position.set(shoulderR * 0.65, shoulderY + armLen + armR * 0.6, 0);
+    upHand.castShadow = true;
+    group.add(upHand);
+    // 反対腕(左)を前下方に — リード(バランス)アーム。X軸まわりに前傾
+    const fArmLen = armLen * 0.7;
+    const fArmGeo = new THREE.CylinderGeometry(armR, armR * 0.85, fArmLen, 10);
+    const fArm = new THREE.Mesh(fArmGeo, bodyMat);
+    fArm.position.set(-shoulderR * 0.55, shoulderY - fArmLen * 0.15, fArmLen * 0.35);
+    fArm.rotation.x = -0.7; // 前傾
+    fArm.castShadow = true;
+    group.add(fArm);
+    const fHand = new THREE.Mesh(handGeo, handMat);
+    // 前腕先端のだいたいの位置
+    fHand.position.set(-shoulderR * 0.55, shoulderY - fArmLen * 0.45, fArmLen * 0.78);
+    fHand.castShadow = true;
+    group.add(fHand);
+    // ジャンプを示す影下のリング(オレンジ=スパイク色)
+    const ringGeo = new THREE.RingGeometry(shoulderR + 0.05, shoulderR + 0.16, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff5f4a, side: THREE.DoubleSide, transparent: true, opacity: 0.55 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.018;
+    group.add(ring);
+  }
+
   // Glow ring under attacker
   if (isAttacker) {
     const ringGeo = new THREE.RingGeometry(shoulderR + 0.08, shoulderR + 0.18, 32);
@@ -2619,10 +2695,17 @@ function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heigh
     group.add(ring);
   }
   // Label
-  const labelText = isBlocker ? `${label} ${heightCm} 🛡` : `${label} ${heightCm}`;
+  let labelText = `${label} ${heightCm}`;
+  if (isSpiker) labelText += ' 💥';
+  else if (isBlocker) labelText += ' 🛡';
   const sprite = makeTextSprite(labelText);
-  // Block時は指先より少し上、それ以外は頭上
-  const labelY = isBlocker ? (shoulderY + armReachAboveShoulder(totalH) + 0.30) : (totalH + 0.22);
+  // ジャンプ姿勢時は指先より少し上、それ以外は頭上
+  let labelY;
+  if (isSpiker || isBlocker) {
+    labelY = shoulderY + armReachAboveShoulder(totalH) + 0.30;
+  } else {
+    labelY = totalH + 0.22;
+  }
   sprite.position.y = labelY;
   sprite.scale.set(0.55, 0.18, 1);
   group.add(sprite);
@@ -3399,13 +3482,16 @@ const heightsGrid = document.getElementById('heightsGrid');
 function renderHeightsPanel(pattern) {
   if (!heightsGrid) return;
   heightsGrid.innerHTML = '';
-  const order = ['L','C','R','S','LB','RB'];
-  // pattern.ourPlayers をid順に並べ替え
-  const sorted = [...pattern.ourPlayers].sort((a, b) => {
-    const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-  });
-  sorted.forEach(p => {
+
+  // セクションヘッダ追加
+  function addSection(title) {
+    const h = document.createElement('div');
+    h.className = 'section-head';
+    h.textContent = title;
+    heightsGrid.appendChild(h);
+  }
+  // 1選手分の行を追加。listはpattern.ourPlayers/oppPlayersのいずれか
+  function addPlayerRow(p, list) {
     const tag = document.createElement('span');
     tag.className = 'role-tag';
     tag.textContent = p.id;
@@ -3414,8 +3500,7 @@ function renderHeightsPanel(pattern) {
     slider.min = '130';
     slider.max = '180';
     slider.step = '1';
-    slider.value = p.heightCm ?? defaultHeightFor(p.id);
-    slider.dataset.playerId = p.id;
+    slider.value = p.heightCm ?? 150;
     slider.className = 'slider';
     const val = document.createElement('span');
     val.className = 'h-val';
@@ -3423,38 +3508,82 @@ function renderHeightsPanel(pattern) {
     slider.addEventListener('input', (e) => {
       const newH = parseInt(e.target.value, 10);
       val.textContent = `${newH}cm`;
-      const player = pattern.ourPlayers.find(x => x.id === p.id);
+      const player = list.find(x => x.id === p.id);
       if (player) player.heightCm = newH;
       if (window._volleySave) window._volleySave();
       rebuildSceneFromCurrent();
     });
-    // ブロッカートグル(🛡)
+    // 🛡 ブロッカートグル
     const blkToggle = document.createElement('div');
-    blkToggle.className = 'blk-toggle' + (p.isBlocker ? ' active' : '');
+    blkToggle.className = 'pose-toggle blk' + (p.isBlocker ? ' active' : '');
     blkToggle.textContent = '🛡';
-    blkToggle.title = 'ブロッカー(ジャンプ+腕上げ姿勢)';
+    blkToggle.title = 'ブロッカー(ジャンプ+両腕上げ)';
+    // 💥 スパイカートグル
+    const spkToggle = document.createElement('div');
+    spkToggle.className = 'pose-toggle spk' + (p.isSpiker ? ' active' : '');
+    spkToggle.textContent = '💥';
+    spkToggle.title = 'スパイクフォーム(ジャンプ+片腕上げ)';
     blkToggle.addEventListener('click', () => {
-      const player = pattern.ourPlayers.find(x => x.id === p.id);
-      if (player) {
-        player.isBlocker = !player.isBlocker;
-        blkToggle.classList.toggle('active', player.isBlocker);
-        if (window._volleySave) window._volleySave();
-        rebuildSceneFromCurrent();
-      }
+      const player = list.find(x => x.id === p.id);
+      if (!player) return;
+      player.isBlocker = !player.isBlocker;
+      if (player.isBlocker) player.isSpiker = false; // 排他
+      blkToggle.classList.toggle('active', player.isBlocker);
+      spkToggle.classList.toggle('active', player.isSpiker);
+      if (window._volleySave) window._volleySave();
+      rebuildSceneFromCurrent();
+    });
+    spkToggle.addEventListener('click', () => {
+      const player = list.find(x => x.id === p.id);
+      if (!player) return;
+      player.isSpiker = !player.isSpiker;
+      if (player.isSpiker) player.isBlocker = false; // 排他
+      spkToggle.classList.toggle('active', player.isSpiker);
+      blkToggle.classList.toggle('active', player.isBlocker);
+      if (window._volleySave) window._volleySave();
+      rebuildSceneFromCurrent();
     });
     heightsGrid.appendChild(tag);
     heightsGrid.appendChild(slider);
     heightsGrid.appendChild(val);
     heightsGrid.appendChild(blkToggle);
+    heightsGrid.appendChild(spkToggle);
+  }
+
+  // 味方
+  addSection('👥 味方 (L/R=160 · C/S=155 · LB=150 · RB=145)');
+  const ourOrder = ['L','C','R','S','LB','RB'];
+  const ourSorted = [...pattern.ourPlayers].sort((a, b) => {
+    const ai = ourOrder.indexOf(a.id), bi = ourOrder.indexOf(b.id);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
+  ourSorted.forEach(p => addPlayerRow(p, pattern.ourPlayers));
+
+  // 相手
+  addSection('🏐 相手 (前衛=160 · セッター=155)');
+  const oppOrder = ['OL','OC','OR','OS'];
+  const oppSorted = [...pattern.oppPlayers].sort((a, b) => {
+    const ai = oppOrder.indexOf(a.id), bi = oppOrder.indexOf(b.id);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  oppSorted.forEach(p => addPlayerRow(p, pattern.oppPlayers));
+
   // Reset row
   const reset = document.createElement('button');
   reset.className = 'cam-preset h-reset';
-  reset.textContent = '標準にもどす(L/R 160 · C/S 155 · LB 150 · RB 145, 🛡解除)';
+  reset.textContent = '🔄 標準にもどす(身長デフォルト、🛡💥解除)';
   reset.addEventListener('click', () => {
     pattern.ourPlayers.forEach(p => {
       p.heightCm = defaultHeightFor(p.id);
       p.isBlocker = false;
+      p.isSpiker = false;
+    });
+    pattern.oppPlayers.forEach(p => {
+      // 相手側の標準: OL/OR=160(前衛アタッカー想定), OC/OS=155
+      if (p.id === 'OL' || p.id === 'OR') p.heightCm = 160;
+      else p.heightCm = 155;
+      p.isBlocker = false;
+      p.isSpiker = false;
     });
     if (window._volleySave) window._volleySave();
     renderHeightsPanel(pattern);

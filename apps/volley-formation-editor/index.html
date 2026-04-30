@@ -46,6 +46,8 @@
     font-family: "Noto Sans JP", sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
+    /* iOS rubberband / pull-to-refresh を抑止(線描画中に画面が動かないようにする) */
+    overscroll-behavior: none;
   }
   body {
     background-image:
@@ -153,18 +155,74 @@
     font-size: 10px;
   }
 
-  /* ============= GRID ============= */
-  .board-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 18px;
-    padding: 22px 28px 60px;
+  /* ============= TABS (6パターン切り替え) ============= */
+  .pattern-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 16px;
+    background: rgba(0,0,0,0.25);
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    backdrop-filter: blur(6px);
   }
-  @media (max-width: 1280px) { .board-grid { grid-template-columns: repeat(2, 1fr); } }
+  .pattern-tab {
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--text-dim);
+    padding: 6px 12px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.12s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 36px;
+    justify-content: center;
+  }
+  .pattern-tab:hover { color: var(--text-main); border-color: var(--text-main); }
+  .pattern-tab.active {
+    background: var(--accent-our);
+    color: var(--bg-deep);
+    border-color: var(--accent-our);
+    box-shadow: 0 0 0 2px rgba(244,167,42,0.18);
+  }
+  .pattern-tab .tab-num {
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .pattern-tab .tab-title {
+    font-size: 10px;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @media (max-width: 600px) {
+    .pattern-tab .tab-title { display: none; }
+    .pattern-tabs { padding: 6px 10px; gap: 3px; }
+    .pattern-tab { padding: 6px 10px; min-width: 38px; }
+  }
+
+  /* ============= ACTIVE CARD (single full-width pattern) ============= */
+  .board-grid {
+    display: block;
+    padding: 16px 16px 60px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
   @media (max-width: 800px) {
-    .board-grid { grid-template-columns: 1fr; padding: 18px 14px 60px; }
-    .topbar { padding: 14px 16px; flex-direction: column; align-items: flex-start; }
-    .legend-bar { padding: 10px 16px; }
+    .board-grid { padding: 10px 10px 50px; }
+    .topbar { padding: 10px 14px; flex-direction: column; align-items: flex-start; gap: 8px; }
+    .legend-bar { padding: 8px 14px; }
   }
 
   /* ============= CARD ============= */
@@ -278,9 +336,19 @@
     height: auto;
     display: block;
     user-select: none;
-    touch-action: none;
+    -webkit-user-select: none;
+    touch-action: none;       /* スクロール/ピンチを完全抑止 */
+    -webkit-touch-callout: none;
   }
   .court-svg.mode-course { cursor: crosshair; }
+  /* コース線の不可視ヒットゾーン(モバイル指タップ用) */
+  .course-hit {
+    fill: none;
+    stroke: rgba(0,0,0,0);
+    stroke-width: 24;
+    stroke-linecap: round;
+    cursor: pointer;
+  }
 
   /* ============= CONTROLS ============= */
   .card-controls {
@@ -878,6 +946,7 @@
   <div class="legend-hint">役割: L/C/R/S/LB/RB · ローテなし · ネット2.00m · アタックライン2.7m · 配置:ドラッグ / コース:球種選択→線描画 / 3D:[3D]ボタン</div>
 </div>
 
+<nav class="pattern-tabs" id="patternTabs" role="tablist" aria-label="パターン切替"></nav>
 <main class="board-grid" id="boardGrid"></main>
 
 <!-- Export/Import Modal -->
@@ -1126,6 +1195,7 @@ const STORAGE_KEY = 'volley_formation_board_v4_es2';
 
 function makeDefaultState() {
   return {
+    activePattern: 0,
     patterns: Array.from({ length: 6 }, (_, i) => ({
       title: `パターン ${i + 1}`,
       ourPlayers: defaultOurPlayers(),
@@ -1150,6 +1220,9 @@ function loadState() {
     if (!raw) return makeDefaultState();
     const parsed = JSON.parse(raw);
     if (!parsed.patterns || parsed.patterns.length !== 6) return makeDefaultState();
+    if (typeof parsed.activePattern !== 'number' || parsed.activePattern < 0 || parsed.activePattern > 5) {
+      parsed.activePattern = 0;
+    }
     // Backfill new fields if missing
     parsed.patterns.forEach(p => {
       if (!p.ball) p.ball = defaultBall();
@@ -1182,12 +1255,41 @@ function saveState() {
 
 // ---------- RENDER ----------
 const boardGrid = document.getElementById('boardGrid');
+const patternTabs = document.getElementById('patternTabs');
+
+function renderTabs() {
+  patternTabs.innerHTML = '';
+  state.patterns.forEach((pattern, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'pattern-tab' + (idx === state.activePattern ? ' active' : '');
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', idx === state.activePattern ? 'true' : 'false');
+    const num = document.createElement('span');
+    num.className = 'tab-num';
+    num.textContent = String(idx + 1).padStart(2, '0');
+    btn.appendChild(num);
+    const title = document.createElement('span');
+    title.className = 'tab-title';
+    title.textContent = pattern.title || `パターン${idx + 1}`;
+    btn.appendChild(title);
+    btn.addEventListener('click', () => {
+      if (state.activePattern === idx) return;
+      state.activePattern = idx;
+      saveState();
+      renderAll();
+    });
+    patternTabs.appendChild(btn);
+  });
+}
 
 function renderAll() {
+  renderTabs();
   boardGrid.innerHTML = '';
-  state.patterns.forEach((pattern, idx) => {
+  const idx = state.activePattern;
+  const pattern = state.patterns[idx];
+  if (pattern) {
     boardGrid.appendChild(renderPattern(pattern, idx));
-  });
+  }
 }
 
 function renderPattern(pattern, idx) {
@@ -1363,6 +1465,8 @@ function buildCourtSvg(pattern, idx) {
   // ----- Course lines + arrows (style varies by shot type) -----
   pattern.courses.forEach((c, ci) => {
     const g = document.createElementNS(ns, 'g');
+    g.classList.add('course-group');
+    g.dataset.courseIdx = ci;
     const type = c.type || 'strike';
     const courseEl = buildCourseLineElement(pattern.ball.x, pattern.ball.y, c.x2, c.y2, type);
     courseEl.dataset.courseIdx = ci;
@@ -1383,9 +1487,36 @@ function buildCourtSvg(pattern, idx) {
       g.appendChild(marker);
     }
 
-    // Click to delete
-    g.addEventListener('click', (e) => {
+    // Invisible thicker hit zone for finger taps (mobile-friendly)
+    const hit = document.createElementNS(ns, 'line');
+    hit.setAttribute('x1', pattern.ball.x);
+    hit.setAttribute('y1', pattern.ball.y);
+    hit.setAttribute('x2', c.x2);
+    hit.setAttribute('y2', c.y2);
+    hit.setAttribute('class', 'course-hit');
+    g.appendChild(hit);
+
+    // pointerdown(captureしてSVG側のhandlerが先に動かないように)で削除
+    // モバイルでもデスクトップでも反応する。stopPropagationでcourse描画を阻止。
+    let pdMoved = false;
+    let pdStart = null;
+    g.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
+      pdMoved = false;
+      pdStart = { x: e.clientX, y: e.clientY };
+    });
+    g.addEventListener('pointermove', (e) => {
+      if (!pdStart) return;
+      const dx = e.clientX - pdStart.x;
+      const dy = e.clientY - pdStart.y;
+      if (Math.hypot(dx, dy) > 8) pdMoved = true;
+    });
+    g.addEventListener('pointerup', (e) => {
+      e.stopPropagation();
+      const moved = pdMoved;
+      pdStart = null;
+      pdMoved = false;
+      if (moved) return; // タップではなくスクロール扱い
       if (confirm('このコース線を削除しますか?')) {
         state.patterns[idx].courses.splice(ci, 1);
         saveState();
@@ -1771,11 +1902,13 @@ function setupCourseModeHandlers(svg, idx) {
       showToast('先にボールを配置してください');
       return;
     }
-    // Only start drawing if not on a player or course line
+    // Only start drawing if not on a player or existing course line/hit-zone
     // (ball is allowed - user often starts drawing from the ball)
     const target = evt.target;
     if (target.closest('.player-group') ||
-        target.classList.contains('course-line')) return;
+        target.closest('.course-group') ||
+        target.classList.contains('course-line') ||
+        target.classList.contains('course-hit')) return;
 
     evt.preventDefault();
 
@@ -1856,6 +1989,7 @@ function wireCardEvents(card, idx) {
   titleInput.addEventListener('input', (e) => {
     state.patterns[idx].title = e.target.value;
     saveState();
+    renderTabs(); // タブのタイトルもライブ更新
   });
 
   card.querySelector('[data-action="mirror"]').addEventListener('click', () => {
@@ -1957,9 +2091,16 @@ function wireCardEvents(card, idx) {
 }
 
 function rerenderPatternKeepingFocus(idx) {
-  const old = boardGrid.children[idx];
+  // タブ式UI: アクティブパターンのみ表示中。idxがアクティブでない場合はrender不要
+  if (idx !== state.activePattern) {
+    renderTabs(); // タイトル変更時などに備えてタブだけ更新
+    return;
+  }
+  const old = boardGrid.children[0];
   const newCard = renderPattern(state.patterns[idx], idx);
-  boardGrid.replaceChild(newCard, old);
+  if (old) boardGrid.replaceChild(newCard, old);
+  else boardGrid.appendChild(newCard);
+  renderTabs();
 }
 
 // ---------- ACTIONS ----------

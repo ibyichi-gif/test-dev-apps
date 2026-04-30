@@ -724,10 +724,28 @@
   }
   .view3d-controls .heights-grid {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr auto auto;
     gap: 4px 8px;
     padding: 8px 10px;
     align-items: center;
+  }
+  .view3d-controls .heights-grid .blk-toggle {
+    cursor: pointer;
+    user-select: none;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    padding: 3px 6px;
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    color: var(--text-dim);
+    transition: all 0.15s;
+    text-align: center;
+    min-width: 28px;
+  }
+  .view3d-controls .heights-grid .blk-toggle.active {
+    background: #58d3ff;
+    color: var(--bg-deep);
+    border-color: #58d3ff;
   }
   .view3d-controls .heights-grid .role-tag {
     font-family: "JetBrains Mono", monospace;
@@ -969,7 +987,7 @@ function defaultHeightFor(id) {
 }
 function makePlayer(id, sx, sy, role = 'our') {
   const p = specToSvg(sx, sy);
-  return { id, label: id, x: p.x, y: p.y, role, heightCm: defaultHeightFor(id) };
+  return { id, label: id, x: p.x, y: p.y, role, heightCm: defaultHeightFor(id), isBlocker: false };
 }
 function defaultOurPlayers() {
   // W型レセプションをデフォルト配置とする
@@ -999,9 +1017,10 @@ function defaultBall() {
 }
 
 // Default arc height (meters) per shot type — used in 3D view as initial value
+// blockは「ブロックに当たった後の跳ね方」: 大きい→上に跳ね上がり奥に飛ぶ / 小さい→手の横に当たってサイドに落ちる
 const DEFAULT_ARC = {
   strike: 0.0,   // ほぼ直線
-  block:  0.3,   // やや浮く(ワンタッチで失速)
+  block:  1.2,   // ブロック跳ね上がり (山なりで奥へ)
   loop:   1.5,   // 高く山なり
   feint:  0.6,   // フワッと落ちる
 };
@@ -1129,9 +1148,10 @@ function loadState() {
       if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
       if (!p.mode) p.mode = 'place';
       if (!p.currentShotType) p.currentShotType = 'strike';
-      // Backfill heightCm for existing players (saved before height feature)
+      // Backfill heightCm / isBlocker for existing players (saved before features)
       (p.ourPlayers || []).forEach(pl => {
         if (typeof pl.heightCm !== 'number') pl.heightCm = defaultHeightFor(pl.id);
+        if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
       });
       // Backfill shot type and arc height for old courses
       p.courses.forEach(c => {
@@ -2127,6 +2147,7 @@ let animationId = null;
 let ballMesh = null;
 let ballPole = null;       // dashed vertical line under ball
 const courseObjects = [];  // Array of {tube, ring, fan, courseIdx}
+const currentBlockers = []; // Array of {x, z, handY, id, heightCm} world coords for active blockers
 
 // World scale (小学生バレー): court 16m × 8m, net 2.00m, attack line 2.7m
 // 1 SVG unit ≈ 8/280 m ≈ 0.0286 m
@@ -2217,12 +2238,17 @@ function buildScene(pattern) {
   // Net
   buildNet3D(scene);
 
-  // Players (our + opp)
+  // Players (our + opp) — keep blocker info for course deflection
+  currentBlockers.length = 0;
   pattern.ourPlayers.forEach(p => {
     const isAttacker = p.id === pattern.attackerId;
     const w = svgToWorld(p.x, p.y);
     const hCm = (typeof p.heightCm === 'number') ? p.heightCm : defaultHeightFor(p.id);
-    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm);
+    const blk = !!p.isBlocker;
+    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm, blk);
+    if (blk) {
+      currentBlockers.push({ x: w.x, z: w.z, handY: fingertipY(hCm, true), id: p.id, heightCm: hCm });
+    }
   });
   pattern.oppPlayers.forEach(p => {
     const w = svgToWorld(p.x, p.y);
@@ -2347,33 +2373,77 @@ function buildNet3D(scene) {
   scene.add(net);
 }
 
-function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150) {
+// 肩〜指先までの長さ(腕を真上に伸ばした時) ≈ 全身の0.43倍
+function armReachAboveShoulder(totalH) { return totalH * 0.43; }
+// ブロックジャンプ高さ(地面から足までの距離)
+const BLOCK_JUMP_H = 0.30;
+
+// 立位/ジャンプ時の指先到達高さ(地面から)
+function fingertipY(heightCm, isBlocker) {
+  const totalH = heightCm / 100;
+  const feet = isBlocker ? BLOCK_JUMP_H : 0;
+  return feet + totalH + armReachAboveShoulder(totalH);
+}
+
+function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150, isBlocker = false) {
   const group = new THREE.Group();
   // 実寸プロポーション (小学生想定)
-  // 身長 totalH (m), 頭半径 ≈ totalH * 0.07 (頭身~7身), 肩幅 ≈ totalH * 0.23
-  // 胴(脚含む) = 頭頂下から地面まで (totalH - headDiameter)
   const totalH = heightCm / 100;                       // m
-  const headR = Math.max(0.07, totalH * 0.067);        // ~10cm @150cm
-  const shoulderR = Math.max(0.13, totalH * 0.115);    // 肩半径 (≒肩幅/2)
-  const hipR = shoulderR * 0.92;                       // 腰側はわずかに細く
-  const bodyH = totalH - headR * 2;                    // 体高 = 全身 - 頭直径
-  const bodyCenterY = bodyH / 2;
-  const headCenterY = bodyH + headR;
+  const headR = Math.max(0.07, totalH * 0.067);
+  const shoulderR = Math.max(0.13, totalH * 0.115);
+  const hipR = shoulderR * 0.92;
+  const bodyH = totalH - headR * 2;
 
-  // Body (cylinder) — 肩〜地面
-  const bodyGeo = new THREE.CylinderGeometry(shoulderR, hipR, bodyH, 16);
+  // Block時はジャンプ
+  const feetY = isBlocker ? BLOCK_JUMP_H : 0;
+  const bodyCenterY = feetY + bodyH / 2;
+  const headCenterY = feetY + bodyH + headR;
+  const shoulderY = feetY + bodyH;
+
   const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
+
+  // Body
+  const bodyGeo = new THREE.CylinderGeometry(shoulderR, hipR, bodyH, 16);
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.position.y = bodyCenterY;
   body.castShadow = true;
   group.add(body);
-  // Head (sphere)
+  // Head
   const headGeo = new THREE.SphereGeometry(headR, 16, 12);
   const headMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
   const head = new THREE.Mesh(headGeo, headMat);
   head.position.y = headCenterY;
   head.castShadow = true;
   group.add(head);
+
+  // Block時の腕(2本、肩から真上に)
+  if (isBlocker) {
+    const armR = shoulderR * 0.22;
+    const armLen = armReachAboveShoulder(totalH);
+    const armGeo = new THREE.CylinderGeometry(armR, armR * 0.85, armLen, 10);
+    const xOffset = shoulderR * 0.55;
+    [-1, 1].forEach(side => {
+      const arm = new THREE.Mesh(armGeo, bodyMat);
+      arm.position.set(side * xOffset, shoulderY + armLen / 2, 0);
+      arm.castShadow = true;
+      group.add(arm);
+      // 手のひら(小さい球)
+      const handGeo = new THREE.SphereGeometry(armR * 1.6, 10, 8);
+      const handMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
+      const hand = new THREE.Mesh(handGeo, handMat);
+      hand.position.set(side * xOffset, shoulderY + armLen + armR * 0.6, 0);
+      hand.castShadow = true;
+      group.add(hand);
+    });
+    // ジャンプを示す影下の地面マーカー(青リング)
+    const jumpRingGeo = new THREE.RingGeometry(shoulderR + 0.05, shoulderR + 0.14, 32);
+    const jumpRingMat = new THREE.MeshBasicMaterial({ color: 0x58d3ff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+    const jumpRing = new THREE.Mesh(jumpRingGeo, jumpRingMat);
+    jumpRing.rotation.x = -Math.PI / 2;
+    jumpRing.position.y = 0.015;
+    group.add(jumpRing);
+  }
+
   // Glow ring under attacker
   if (isAttacker) {
     const ringGeo = new THREE.RingGeometry(shoulderR + 0.08, shoulderR + 0.18, 32);
@@ -2383,10 +2453,12 @@ function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heigh
     ring.position.y = 0.02;
     group.add(ring);
   }
-  // Label sprite — 身長(cm)も併記
-  const sprite = makeTextSprite(`${label} ${heightCm}`);
-  sprite.position.y = totalH + 0.22;
-  // ラベル幅は全身の40%程度に縮小
+  // Label
+  const labelText = isBlocker ? `${label} ${heightCm} 🛡` : `${label} ${heightCm}`;
+  const sprite = makeTextSprite(labelText);
+  // Block時は指先より少し上、それ以外は頭上
+  const labelY = isBlocker ? (shoulderY + armReachAboveShoulder(totalH) + 0.30) : (totalH + 0.22);
+  sprite.position.y = labelY;
   sprite.scale.set(0.55, 0.18, 1);
   group.add(sprite);
 
@@ -2437,6 +2509,104 @@ function addBall3D(scene, x, y, z) {
   ballPole = line;
 }
 
+// ボールから最も関連するブロッカーを見つける(コース線の方向に近いx位置)
+function findRelevantBlocker(bx, bz, tx, tz) {
+  if (!currentBlockers.length) return null;
+  // ボールとターゲットの中間付近のxを基準にする(球の通過点に最も近いブロッカー)
+  const midX = (bx + tx) / 2;
+  let best = null, bestDist = Infinity;
+  for (const b of currentBlockers) {
+    // ブロッカーは our court(z>0) にいるはずだが、ボール位置との位置関係も考慮
+    const dx = b.x - midX;
+    const dist = Math.abs(dx);
+    if (dist < bestDist) {
+      best = b;
+      bestDist = dist;
+    }
+  }
+  // 横に1.5m以上離れたブロッカーは関連なし(コートの反対側のブロッカーなど)
+  if (bestDist > 1.5) return null;
+  return best;
+}
+
+// 2段軌道: ball -> blocker hand -> target
+//  Phase1 (ball→hand): 直線・速い (ヒット衝突)
+//  Phase2 (hand→target): 弾性反射軌道 (上に跳ね上がる山なり)
+function buildBlockTrajectory(scene, bx, by, bz, tx, tz, blocker, arcHeight, halfAngleDeg, colorHex, type, courseIdx) {
+  const targetY = 0.05;
+  // ブロッカーの手の位置(2本の手の中央上空)
+  const handX = blocker.x, handZ = blocker.z, handY = blocker.handY;
+
+  // Phase 2 の山なり高さ: arcHeightスライダー値を使用 (デフォルト0.3)
+  // 値が大きい→「上に跳ね上がり奥に飛ぶ」軌道
+  // 値が小さい→「手の横に当たってサイドに落ちる」低い軌道
+  const peakBump = Math.max(0.05, arcHeight);
+
+  // Phase 1: ball → hand (直線、わずかな弧)
+  const phase1Segs = 12;
+  const phase1Points = [];
+  for (let i = 0; i <= phase1Segs; i++) {
+    const t = i / phase1Segs;
+    const x = bx + (handX - bx) * t;
+    const z = bz + (handZ - bz) * t;
+    const y = by * (1 - t) + handY * t + 0.05 * 4 * t * (1 - t); // ごく小さな弧
+    phase1Points.push(new THREE.Vector3(x, y, z));
+  }
+
+  // Phase 2: hand → target (弾性反射)
+  const phase2Segs = 24;
+  const phase2Points = [];
+  for (let i = 1; i <= phase2Segs; i++) { // 1から開始(handは既にphase1終端)
+    const t = i / phase2Segs;
+    const x = handX + (tx - handX) * t;
+    const z = handZ + (tz - handZ) * t;
+    const chord = handY * (1 - t) + targetY * t;
+    const bump = 4 * t * (1 - t) * peakBump;
+    phase2Points.push(new THREE.Vector3(x, chord + bump, z));
+  }
+
+  const allPoints = phase1Points.concat(phase2Points);
+
+  // Single tube for the whole trajectory
+  const curve = new THREE.CatmullRomCurve3(allPoints);
+  const tubeGeo = new THREE.TubeGeometry(curve, 60, 0.04, 8, false);
+  const tubeMat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    emissive: colorHex,
+    emissiveIntensity: 0.55,
+    roughness: 0.3,
+    transparent: true,
+    opacity: 1.0,
+  });
+  const tube = new THREE.Mesh(tubeGeo, tubeMat);
+  scene.add(tube);
+
+  // 衝突点(手のひら)に小さな⚡マーカー(白い球)
+  const hitGeo = new THREE.SphereGeometry(0.07, 12, 8);
+  const hitMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+  const hitMarker = new THREE.Mesh(hitGeo, hitMat);
+  hitMarker.position.set(handX, handY, handZ);
+  scene.add(hitMarker);
+
+  // Landing marker on the floor
+  const ringGeo = new THREE.RingGeometry(0.12, 0.22, 24);
+  const ringMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(tx, 0.02, tz);
+  scene.add(ring);
+
+  // Fan area on the floor (deflection側のみ表示)
+  const fan = buildFanFloor3D(scene, handX, handZ, tx, tz, halfAngleDeg, colorHex, type);
+
+  // Badge
+  const badge = makeCourseBadge(courseIdx + 1, type, colorHex);
+  badge.position.set(tx, 0.85, tz);
+  scene.add(badge);
+
+  courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, hitMarker, courseIdx, colorHex, type, isBlock: true });
+}
+
 function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, courseIdx) {
   // Target lands on the court (y=0)
   const targetY = 0.05;
@@ -2447,22 +2617,25 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
     feint:  0x58d3ff,
   }[type] || 0xff5f4a;
 
+  // ====== BLOCK type: 2-phase trajectory (ball -> blocker hand -> target) ======
+  // ターゲットがブロッカー側(z<0=opp side or 反対側)なら「上に跳ね上がり奥に飛ぶ」
+  // ターゲットが横方向にズレていれば「手の横に当たってサイドに落ちる」
+  if (type === 'block') {
+    const blocker = findRelevantBlocker(bx, bz, tx, tz);
+    if (blocker) {
+      return buildBlockTrajectory(scene, bx, by, bz, tx, tz, blocker, arcHeight, halfAngleDeg, colorHex, type, courseIdx);
+    }
+    // ブロッカーがいない場合は通常の軌道にフォールバック
+  }
+
   const dx = tx - bx, dz = tz - bz;
   const horizDist = Math.sqrt(dx*dx + dz*dz);
 
   // Build trajectory points
-  // Base trajectory: parabolic from (bx, by, bz) to (tx, targetY, tz)
-  // Peak height = midpoint elevation between by and targetY, plus arcHeight bump above the chord
   const segments = 32;
   const points = [];
 
-  // The "chord" goes linearly from start height by to end height targetY
-  // We add a parabolic bump that peaks at midpoint with magnitude = arcHeight
-  // Special: for 'block' type, also add a small lateral wobble (deflection feel)
-  let lateralWobble = 0;
-  if (type === 'block') lateralWobble = 0.25;
-
-  // Perpendicular in XZ plane (for wobble)
+  // Perpendicular in XZ plane
   let px = 0, pz = 0;
   if (horizDist > 0.001) {
     const ux = dx / horizDist, uz = dz / horizDist;
@@ -2471,21 +2644,11 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
 
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
-    // Linear interpolation in XZ
     const x = bx + dx * t;
     const z = bz + dz * t;
-    // Height: linear chord + parabolic bump
     const chord = by * (1 - t) + targetY * t;
-    const bump = 4 * t * (1 - t) * arcHeight; // peaks at t=0.5 with value = arcHeight
-    let y = chord + bump;
-    // Block wobble (lateral)
-    let xx = x, zz = z;
-    if (lateralWobble > 0) {
-      const wob = Math.sin(t * Math.PI * 4) * lateralWobble * (1 - t * 0.6);
-      xx += px * wob;
-      zz += pz * wob;
-    }
-    points.push(new THREE.Vector3(xx, y, zz));
+    const bump = 4 * t * (1 - t) * arcHeight;
+    points.push(new THREE.Vector3(x, chord + bump, z));
   }
 
   // Build tube geometry along curve for visibility
@@ -2580,6 +2743,10 @@ function highlightSelectedCourse(selectedIdx) {
     // Fan polygon (semi-transparent)
     if (co.fan && co.fan.material) {
       co.fan.material.opacity = isSel ? 0.32 : (selectedIdx < 0 ? 0.18 : 0.06);
+    }
+    // Hit marker (block deflection point)
+    if (co.hitMarker && co.hitMarker.material) {
+      co.hitMarker.material.opacity = isSel ? 0.95 : (selectedIdx < 0 ? 0.9 : 0.25);
     }
     // Badge: selected = full bright + slightly larger; others = faint
     if (co.badge && co.badge.material) {
@@ -2800,16 +2967,34 @@ function renderHeightsPanel(pattern) {
       if (window._volleySave) window._volleySave();
       rebuildSceneFromCurrent();
     });
+    // ブロッカートグル(🛡)
+    const blkToggle = document.createElement('div');
+    blkToggle.className = 'blk-toggle' + (p.isBlocker ? ' active' : '');
+    blkToggle.textContent = '🛡';
+    blkToggle.title = 'ブロッカー(ジャンプ+腕上げ姿勢)';
+    blkToggle.addEventListener('click', () => {
+      const player = pattern.ourPlayers.find(x => x.id === p.id);
+      if (player) {
+        player.isBlocker = !player.isBlocker;
+        blkToggle.classList.toggle('active', player.isBlocker);
+        if (window._volleySave) window._volleySave();
+        rebuildSceneFromCurrent();
+      }
+    });
     heightsGrid.appendChild(tag);
     heightsGrid.appendChild(slider);
     heightsGrid.appendChild(val);
+    heightsGrid.appendChild(blkToggle);
   });
   // Reset row
   const reset = document.createElement('button');
   reset.className = 'cam-preset h-reset';
-  reset.textContent = '標準にもどす(L/R 160 · C/S 155 · LB 150 · RB 145)';
+  reset.textContent = '標準にもどす(L/R 160 · C/S 155 · LB 150 · RB 145, 🛡解除)';
   reset.addEventListener('click', () => {
-    pattern.ourPlayers.forEach(p => { p.heightCm = defaultHeightFor(p.id); });
+    pattern.ourPlayers.forEach(p => {
+      p.heightCm = defaultHeightFor(p.id);
+      p.isBlocker = false;
+    });
     if (window._volleySave) window._volleySave();
     renderHeightsPanel(pattern);
     rebuildSceneFromCurrent();

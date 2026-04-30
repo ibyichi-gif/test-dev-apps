@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>テスト開発アプリ — Court</title>
+<style>
+  :root {
+    --court: #d97842;
+    --court-dark: #b85f2f;
+    --line: #ffffff;
+    --bg: #2c3e50;
+    --bg2: #1f2d3a;
+    --net: #f8f8f8;
+    --tx: #1a1a1a;
+    --tx-light: #ffffff;
+    --accent: #ffd54a;
+    --shadow: 0 8px 24px rgba(0,0,0,0.18);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Segoe UI", "Yu Gothic UI", sans-serif;
+    background: linear-gradient(135deg, var(--bg) 0%, var(--bg2) 100%);
+    color: var(--tx-light);
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 24px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+  .sub { font-size: 13px; opacity: 0.7; margin-top: 4px; }
+
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .search {
+    flex: 1;
+    max-width: 420px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.08);
+    color: var(--tx-light);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.15s;
+  }
+  .search:focus { background: rgba(255,255,255,0.14); border-color: var(--accent); }
+  .search::placeholder { color: rgba(255,255,255,0.5); }
+
+  .court-wrap {
+    background: var(--court);
+    border-radius: 14px;
+    padding: 30px 24px;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .court-wrap::before {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border: 3px solid var(--line);
+    border-radius: 4px;
+    pointer-events: none;
+  }
+  .court-wrap::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    right: 12px;
+    height: 4px;
+    background: var(--net);
+    transform: translateY(-50%);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+    pointer-events: none;
+  }
+  .attack-line {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    height: 2px;
+    background: var(--line);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .attack-top { top: calc(50% - 70px); }
+  .attack-bottom { top: calc(50% + 70px); }
+
+  .half {
+    position: relative;
+    padding: 20px 12px;
+    min-height: 230px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    align-content: start;
+  }
+  .half-top { padding-bottom: 30px; }
+  .half-bottom { padding-top: 30px; }
+
+  .half-label {
+    position: absolute;
+    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.2em;
+    pointer-events: none;
+  }
+  .half-top .half-label { top: 4px; left: 50%; transform: translateX(-50%); }
+  .half-bottom .half-label { bottom: 4px; left: 50%; transform: translateX(-50%); }
+
+  .position {
+    background: rgba(255,255,255,0.92);
+    color: var(--tx);
+    border-radius: 10px;
+    padding: 14px 12px;
+    text-decoration: none;
+    transition: transform 0.12s, box-shadow 0.12s;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid rgba(0,0,0,0.06);
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+  }
+  .position:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.18);
+  }
+  .position.empty {
+    background: rgba(255,255,255,0.18);
+    color: rgba(255,255,255,0.55);
+    border: 1px dashed rgba(255,255,255,0.35);
+    cursor: default;
+  }
+  .position.empty:hover { transform: none; box-shadow: none; }
+
+  .pos-num {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--court-dark);
+    letter-spacing: 0.1em;
+  }
+  .position.empty .pos-num { color: rgba(255,255,255,0.55); }
+  .pos-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .pos-desc {
+    font-size: 11px;
+    opacity: 0.7;
+    line-height: 1.35;
+  }
+  .pos-tag {
+    font-size: 9px;
+    background: var(--accent);
+    color: var(--tx);
+    padding: 1px 6px;
+    border-radius: 4px;
+    align-self: flex-start;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+
+  .net-label {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--tx-light);
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.15em;
+    z-index: 3;
+  }
+
+  .info-row {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.85);
+  }
+  .chip strong { color: var(--accent); margin-right: 4px; }
+
+  footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 11px;
+    opacity: 0.5;
+  }
+
+  @media (max-width: 600px) {
+    .half { grid-template-columns: repeat(2, 1fr); min-height: auto; }
+    .court-wrap { padding: 22px 14px; }
+    .attack-top, .attack-bottom { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🏐 テスト開発アプリ — Court</h1>
+    <p class="sub">アプリをコート上のポジションから選択 / 検索</p>
+  </header>
+
+  <div class="toolbar">
+    <input type="text" class="search" id="searchInput" placeholder="アプリ名で検索…（例：保険、OCR、フォーム）">
+  </div>
+
+  <div class="court-wrap">
+    <div class="net-label">NET</div>
+    <div class="attack-line attack-top"></div>
+    <div class="attack-line attack-bottom"></div>
+
+    <div class="half half-top" id="halfTop">
+      <span class="half-label">FRONT ROW</span>
+    </div>
+
+    <div class="half half-bottom" id="halfBottom">
+      <span class="half-label">BACK ROW</span>
+    </div>
+  </div>
+
+  <div class="info-row">
+    <span class="chip"><strong>登録</strong><span id="appCount">0</span> apps</span>
+    <span class="chip"><strong>表示</strong><span id="visibleCount">0</span> apps</span>
+    <span class="chip"><strong>環境</strong>GitHub + Vercel</span>
+  </div>
+
+  <footer>
+    Volleyball court layout · 6 positions per half · Click a card to open the app
+  </footer>
+</div>
+
+<script>
+  const apps = [
+    { pos: 4, title: "アプリ確認", desc: "サンプル：バレーコート風UI", tag: "DEMO", url: "apps/sample-court/index.html" },
+    { pos: 3, title: "保険管理", desc: "テナント店舗火災保険の管理", tag: "WIP", url: "#" },
+    { pos: 2, title: "OCR取込", desc: "PDF→OCR→Notion DB", tag: "WIP", url: "#" },
+    { pos: 5, title: "申込リスト自動化", desc: "体験レッスン申込の取込", tag: "WIP", url: "#" },
+    { pos: 6, title: "業務マップ", desc: "英語事業部の業務全体マップ", tag: "IDEA", url: "#" },
+    { pos: 1, title: "数字取りまとめ", desc: "月次の問合せ・体験・入会", tag: "IDEA", url: "#" }
+  ];
+
+  const POSITION_LAYOUT = {
+    4: { half: "top", order: 1, label: "P4" },
+    3: { half: "top", order: 2, label: "P3" },
+    2: { half: "top", order: 3, label: "P2" },
+    5: { half: "bottom", order: 1, label: "P5" },
+    6: { half: "bottom", order: 2, label: "P6" },
+    1: { half: "bottom", order: 3, label: "P1" }
+  };
+
+  function render(filter = "") {
+    const halfTop = document.getElementById("halfTop");
+    const halfBottom = document.getElementById("halfBottom");
+    halfTop.querySelectorAll(".position").forEach(n => n.remove());
+    halfBottom.querySelectorAll(".position").forEach(n => n.remove());
+
+    const f = filter.trim().toLowerCase();
+    let visible = 0;
+
+    [1, 2, 3, 4, 5, 6].forEach(pos => {
+      const layout = POSITION_LAYOUT[pos];
+      const app = apps.find(a => a.pos === pos);
+      const target = layout.half === "top" ? halfTop : halfBottom;
+      const node = document.createElement(app && app.url !== "#" ? "a" : "div");
+      node.className = "position" + (!app ? " empty" : "");
+      node.style.order = layout.order;
+
+      if (app) {
+        const matched = !f || app.title.toLowerCase().includes(f) || app.desc.toLowerCase().includes(f);
+        if (!matched) { node.style.display = "none"; } else { visible++; }
+        if (app.url !== "#") {
+          node.href = app.url;
+          node.target = "_self";
+        }
+        node.innerHTML = `
+          <span class="pos-num">${layout.label}</span>
+          <span class="pos-title">${app.title}</span>
+          <span class="pos-desc">${app.desc}</span>
+          <span class="pos-tag">${app.tag}</span>
+        `;
+      } else {
+        node.innerHTML = `
+          <span class="pos-num">${layout.label}</span>
+          <span class="pos-title">空きポジション</span>
+          <span class="pos-desc">apps/ に配置可</span>
+        `;
+      }
+      target.appendChild(node);
+    });
+
+    document.getElementById("appCount").textContent = apps.length;
+    document.getElementById("visibleCount").textContent = f ? visible : apps.length;
+  }
+
+  document.getElementById("searchInput").addEventListener("input", e => render(e.target.value));
+  render();
+</script>
+</body>
+</html>

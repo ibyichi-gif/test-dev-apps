@@ -603,27 +603,29 @@
   .view3d-topbar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 20px;
+    gap: 10px;
+    padding: 6px 14px;
     background: rgba(10, 14, 20, 0.9);
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(8px);
     flex-wrap: wrap;
+    min-height: 0;
   }
   .view3d-title {
     font-family: "Bebas Neue", sans-serif;
-    font-size: 20px;
+    font-size: 15px;
     color: var(--accent-our);
-    letter-spacing: 0.15em;
-    margin-right: 8px;
+    letter-spacing: 0.12em;
+    margin-right: 6px;
   }
   .view3d-pattern-name {
     font-family: "Noto Sans JP", sans-serif;
-    font-size: 13px;
+    font-size: 11px;
     color: var(--text-main);
     border-left: 1px solid var(--line-strong);
-    padding-left: 12px;
+    padding-left: 10px;
   }
+  .view3d-overlay .btn { padding: 4px 10px; font-size: 10px; }
   .view3d-actions {
     display: flex;
     gap: 6px;
@@ -660,10 +662,10 @@
     background: transparent;
     border: 1px solid var(--line-strong);
     color: var(--text-main);
-    padding: 7px 12px;
+    padding: 4px 9px;
     font-family: "JetBrains Mono", monospace;
     font-size: 10px;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     cursor: pointer;
     border-radius: 2px;
     text-transform: uppercase;
@@ -676,23 +678,83 @@
     background: rgba(13, 18, 28, 0.85);
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(8px);
-    padding: 10px 20px;
+    padding: 6px 14px;
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    align-items: center;
   }
   .view3d-cam-row, .view3d-slider-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: wrap;
+  }
+  .view3d-controls .control-label { font-size: 10px; }
+  .view3d-controls details {
+    border: 1px solid var(--line-strong);
+    border-radius: 2px;
+    padding: 0;
+    font-size: 10px;
+  }
+  .view3d-controls details > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 4px 8px;
+    user-select: none;
+    color: var(--text-main);
+    font-family: "JetBrains Mono", monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 10px;
+    background: transparent;
+  }
+  .view3d-controls details > summary::-webkit-details-marker { display: none; }
+  .view3d-controls details[open] > summary { border-bottom: 1px solid var(--line); }
+  .view3d-controls details[open] {
+    position: absolute;
+    top: 100%;
+    left: 14px;
+    z-index: 10;
+    background: rgba(13, 18, 28, 0.96);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    min-width: 280px;
+  }
+  .view3d-controls .heights-grid {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 4px 8px;
+    padding: 8px 10px;
+    align-items: center;
+  }
+  .view3d-controls .heights-grid .role-tag {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--accent-our);
+    min-width: 28px;
+  }
+  .view3d-controls .heights-grid .h-val {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--text-main);
+    min-width: 44px;
+    text-align: right;
+  }
+  .view3d-controls .heights-grid input[type="range"] {
+    min-width: 110px;
+  }
+  .view3d-controls .heights-grid .h-reset {
+    grid-column: 1 / -1;
+    margin-top: 4px;
   }
   .slider {
     -webkit-appearance: none;
     appearance: none;
     flex: 1;
-    min-width: 140px;
-    max-width: 320px;
+    min-width: 110px;
+    max-width: 240px;
     height: 4px;
     background: var(--bg-deep);
     border: 1px solid var(--line-strong);
@@ -814,17 +876,17 @@
       <button class="btn" id="btnExit3d">← 2Dに戻る</button>
     </div>
   </div>
-  <div class="view3d-controls">
+  <div class="view3d-controls" style="position:relative">
     <div class="view3d-cam-row">
-      <span class="control-label">カメラ</span>
+      <span class="control-label">📷</span>
       <button class="cam-preset" data-cam="overhead">俯瞰</button>
-      <button class="cam-preset" data-cam="attacker">アタッカー視点</button>
-      <button class="cam-preset" data-cam="blocker">ブロッカー視点</button>
-      <button class="cam-preset" data-cam="baseline">ベースライン</button>
-      <button class="cam-preset" data-cam="side">サイドライン</button>
+      <button class="cam-preset" data-cam="attacker">ATK</button>
+      <button class="cam-preset" data-cam="blocker">BLK</button>
+      <button class="cam-preset" data-cam="baseline">BL</button>
+      <button class="cam-preset" data-cam="side">SIDE</button>
     </div>
     <div class="view3d-slider-row" id="view3dBallRow">
-      <span class="control-label">ボール高さ</span>
+      <span class="control-label">🏐高さ</span>
       <input type="range" class="slider" id="ballHeightSlider" min="0" max="3.5" step="0.05" value="2.5">
       <span class="slider-val" id="ballHeightVal">2.50 m</span>
     </div>
@@ -833,10 +895,14 @@
       <select class="course-select" id="courseSelect">
         <option value="-1">-- なし --</option>
       </select>
-      <span class="control-label" style="margin-left:10px">山なり</span>
+      <span class="control-label" style="margin-left:6px">山</span>
       <input type="range" class="slider" id="arcSlider" min="0" max="4" step="0.05" value="0" disabled>
       <span class="slider-val" id="arcVal">0.00 m</span>
     </div>
+    <details id="heightsPanel">
+      <summary>📏 身長調整</summary>
+      <div class="heights-grid" id="heightsGrid"></div>
+    </details>
   </div>
   <div class="view3d-canvas-wrap" id="view3dCanvasWrap">
     <div class="view3d-hint">マウス左ドラッグ:回転 / ホイール:ズーム / 右ドラッグ:パン</div>
@@ -894,9 +960,16 @@ function specToSvg(sx, sy) {
   const h = COURT.ourBottom - COURT.oppTop;     // 560 (full 16m)
   return { x: COURT.ourLeft + sx * w / 100, y: COURT.oppTop + sy * h / 100 };
 }
+// 役割別のデフォルト身長(cm) — 小学生バレー想定
+//  L/R(スパイカー):160, C/S(センター/セッター=ブロッカー):155, LB/RB(レシーバー):150/145
+const DEFAULT_HEIGHTS_CM = { L: 160, R: 160, C: 155, S: 155, LB: 150, RB: 145 };
+const STANDARD_HEIGHT_CM = 150;
+function defaultHeightFor(id) {
+  return DEFAULT_HEIGHTS_CM[id] ?? STANDARD_HEIGHT_CM;
+}
 function makePlayer(id, sx, sy, role = 'our') {
   const p = specToSvg(sx, sy);
-  return { id, label: id, x: p.x, y: p.y, role };
+  return { id, label: id, x: p.x, y: p.y, role, heightCm: defaultHeightFor(id) };
 }
 function defaultOurPlayers() {
   // W型レセプションをデフォルト配置とする
@@ -1055,6 +1128,10 @@ function loadState() {
       if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
       if (!p.mode) p.mode = 'place';
       if (!p.currentShotType) p.currentShotType = 'strike';
+      // Backfill heightCm for existing players (saved before height feature)
+      (p.ourPlayers || []).forEach(pl => {
+        if (typeof pl.heightCm !== 'number') pl.heightCm = defaultHeightFor(pl.id);
+      });
       // Backfill shot type and arc height for old courses
       p.courses.forEach(c => {
         if (!c.type) c.type = 'strike';
@@ -2143,11 +2220,13 @@ function buildScene(pattern) {
   pattern.ourPlayers.forEach(p => {
     const isAttacker = p.id === pattern.attackerId;
     const w = svgToWorld(p.x, p.y);
-    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker);
+    const hCm = (typeof p.heightCm === 'number') ? p.heightCm : defaultHeightFor(p.id);
+    addPlayer3D(scene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm);
   });
   pattern.oppPlayers.forEach(p => {
     const w = svgToWorld(p.x, p.y);
-    addPlayer3D(scene, w.x, w.z, 0x4d6a8a, p.label, false, true);
+    const hCm = (typeof p.heightCm === 'number') ? p.heightCm : 150;
+    addPlayer3D(scene, w.x, w.z, 0x4d6a8a, p.label, false, true, hCm);
   });
 
   // Ball
@@ -2267,34 +2346,47 @@ function buildNet3D(scene) {
   scene.add(net);
 }
 
-function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false) {
+function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150) {
   const group = new THREE.Group();
-  // Body (cylinder)
-  const bodyGeo = new THREE.CylinderGeometry(0.25, 0.3, 1.5, 16);
+  // 実寸プロポーション (小学生想定)
+  // 身長 totalH (m), 頭半径 ≈ totalH * 0.07 (頭身~7身), 肩幅 ≈ totalH * 0.23
+  // 胴(脚含む) = 頭頂下から地面まで (totalH - headDiameter)
+  const totalH = heightCm / 100;                       // m
+  const headR = Math.max(0.07, totalH * 0.067);        // ~10cm @150cm
+  const shoulderR = Math.max(0.13, totalH * 0.115);    // 肩半径 (≒肩幅/2)
+  const hipR = shoulderR * 0.92;                       // 腰側はわずかに細く
+  const bodyH = totalH - headR * 2;                    // 体高 = 全身 - 頭直径
+  const bodyCenterY = bodyH / 2;
+  const headCenterY = bodyH + headR;
+
+  // Body (cylinder) — 肩〜地面
+  const bodyGeo = new THREE.CylinderGeometry(shoulderR, hipR, bodyH, 16);
   const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
   const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = 0.75;
+  body.position.y = bodyCenterY;
   body.castShadow = true;
   group.add(body);
   // Head (sphere)
-  const headGeo = new THREE.SphereGeometry(0.22, 16, 12);
+  const headGeo = new THREE.SphereGeometry(headR, 16, 12);
   const headMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
   const head = new THREE.Mesh(headGeo, headMat);
-  head.position.y = 1.7;
+  head.position.y = headCenterY;
   head.castShadow = true;
   group.add(head);
   // Glow ring under attacker
   if (isAttacker) {
-    const ringGeo = new THREE.RingGeometry(0.4, 0.5, 32);
+    const ringGeo = new THREE.RingGeometry(shoulderR + 0.08, shoulderR + 0.18, 32);
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xef5b3b, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.02;
     group.add(ring);
   }
-  // Label sprite
-  const sprite = makeTextSprite(label);
-  sprite.position.y = 2.3;
+  // Label sprite — 身長(cm)も併記
+  const sprite = makeTextSprite(`${label} ${heightCm}`);
+  sprite.position.y = totalH + 0.22;
+  // ラベル幅は全身の40%程度に縮小
+  sprite.scale.set(0.55, 0.18, 1);
   group.add(sprite);
 
   group.position.set(x, 0, z);
@@ -2323,7 +2415,9 @@ function makeTextSprite(text) {
 }
 
 function addBall3D(scene, x, y, z) {
-  const geo = new THREE.SphereGeometry(0.21, 24, 18);
+  // 小学生バレー4号球: 円周62-64cm → 半径 ≈ 0.10m
+  const BALL_RADIUS = 0.101;  // 円周63.5cm相当
+  const geo = new THREE.SphereGeometry(BALL_RADIUS, 24, 18);
   const mat = new THREE.MeshStandardMaterial({ color: 0xfff2c4, roughness: 0.4, emissive: 0x554a30, emissiveIntensity: 0.3 });
   const ball = new THREE.Mesh(geo, mat);
   ball.position.set(x, y, z);
@@ -2670,6 +2764,58 @@ function initSliders(pattern) {
   }
 }
 
+// ---------- HEIGHTS PANEL ----------
+const heightsGrid = document.getElementById('heightsGrid');
+
+function renderHeightsPanel(pattern) {
+  if (!heightsGrid) return;
+  heightsGrid.innerHTML = '';
+  const order = ['L','C','R','S','LB','RB'];
+  // pattern.ourPlayers をid順に並べ替え
+  const sorted = [...pattern.ourPlayers].sort((a, b) => {
+    const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  sorted.forEach(p => {
+    const tag = document.createElement('span');
+    tag.className = 'role-tag';
+    tag.textContent = p.id;
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '130';
+    slider.max = '180';
+    slider.step = '1';
+    slider.value = p.heightCm ?? defaultHeightFor(p.id);
+    slider.dataset.playerId = p.id;
+    slider.className = 'slider';
+    const val = document.createElement('span');
+    val.className = 'h-val';
+    val.textContent = `${slider.value}cm`;
+    slider.addEventListener('input', (e) => {
+      const newH = parseInt(e.target.value, 10);
+      val.textContent = `${newH}cm`;
+      const player = pattern.ourPlayers.find(x => x.id === p.id);
+      if (player) player.heightCm = newH;
+      if (window._volleySave) window._volleySave();
+      rebuildSceneFromCurrent();
+    });
+    heightsGrid.appendChild(tag);
+    heightsGrid.appendChild(slider);
+    heightsGrid.appendChild(val);
+  });
+  // Reset row
+  const reset = document.createElement('button');
+  reset.className = 'cam-preset h-reset';
+  reset.textContent = '標準にもどす(L/R 160 · C/S 155 · LB 150 · RB 145)';
+  reset.addEventListener('click', () => {
+    pattern.ourPlayers.forEach(p => { p.heightCm = defaultHeightFor(p.id); });
+    if (window._volleySave) window._volleySave();
+    renderHeightsPanel(pattern);
+    rebuildSceneFromCurrent();
+  });
+  heightsGrid.appendChild(reset);
+}
+
 function syncArcSliderToCourse(courseIdx, pattern) {
   const c = pattern.courses[courseIdx];
   if (!c) {
@@ -2752,6 +2898,7 @@ function open3D(idx) {
     buildScene(pattern);
     applyCameraPreset('overhead', pattern);
     initSliders(pattern);
+    renderHeightsPanel(pattern);
     animate();
   });
 }

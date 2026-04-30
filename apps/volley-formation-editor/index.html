@@ -500,6 +500,49 @@
     user-select: none;
   }
 
+  /* ----- simulation pattern (パターン7) ----- */
+  .pattern-tab.sim {
+    border-color: #b876ff;
+    color: #b876ff;
+  }
+  .pattern-tab.sim.active {
+    background: #b876ff;
+    color: var(--bg-deep);
+    border-color: #b876ff;
+    box-shadow: 0 0 0 2px rgba(184,118,255,0.2);
+  }
+  .sim-row { background: rgba(184,118,255,0.08); padding: 8px 10px; border-radius: 4px; border: 1px solid rgba(184,118,255,0.3); }
+  .sim-btn {
+    background: linear-gradient(135deg, #b876ff, #ef5b3b);
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    font-family: "Noto Sans JP", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    border-radius: 3px;
+    width: 100%;
+    transition: filter 0.15s, transform 0.05s;
+  }
+  .sim-btn:hover { filter: brightness(1.12); }
+  .sim-btn:active { transform: translateY(1px); }
+  .sim-notes {
+    background: rgba(0,0,0,0.18);
+    border-left: 2px solid #b876ff;
+    padding: 8px 10px;
+    margin: 6px 0;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    white-space: pre-line;
+    border-radius: 0 3px 3px 0;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .sim-notes.has-result { color: var(--text-main); }
+
   /* ----- course / fan ----- */
   .course-line {
     fill: none;
@@ -1020,7 +1063,7 @@
     </details>
   </div>
   <div class="view3d-canvas-wrap" id="view3dCanvasWrap">
-    <div class="view3d-hint">選手をドラッグ:移動 / 何もない所を左ドラッグ:回転 / ホイール:ズーム / 右ドラッグ:パン</div>
+    <div class="view3d-hint">選手・ボールをドラッグ:移動(ボールは現在の高さで水平移動) / 何もない所:回転 / ホイール:ズーム / 右ドラッグ:パン</div>
   </div>
 </div>
 
@@ -1208,25 +1251,62 @@ const PRESETS = {
 
 // ---------- STATE ----------
 // 旧データ(P1-P6)と互換性なし → キーをbumpして強制リセット
-// _es: 6役割モデル / _es2: コート縦横比 1:2 / _es3: 相手選手にid OL/OC/OR/OSを付与
-const STORAGE_KEY = 'volley_formation_board_v4_es3';
+// _es: 6役割モデル / _es2: コート縦横比 1:2 / _es3: 相手OL/OC/OR/OS / _es4: 7パターン化(自動シミュ)
+const STORAGE_KEY = 'volley_formation_board_v4_es4';
+const SIM_PATTERN_IDX = 6; // パターン7(0-indexed)
 
 function makeDefaultState() {
+  const patterns = Array.from({ length: 6 }, (_, i) => ({
+    title: `パターン ${i + 1}`,
+    ourPlayers: defaultOurPlayers(),
+    oppPlayers: defaultOppPlayers(),
+    attackerId: 'L',
+    memo: '',
+    preset: 'w-type',
+    ball: defaultBall(),
+    courses: [],   // { x2,y2, type:'strike'|'block'|'loop'|'feint' }
+    mode: 'place', // 'place' | 'course'
+    halfAngle: 15, // degrees, ± from course line
+    currentShotType: 'strike', // selected shot type for new courses
+  }));
+  patterns.push(makeSimDefaultPattern());
+  return { activePattern: 0, patterns };
+}
+
+// 7番目=自動シミュレーション用のデフォルト陣形
+//   - 相手OL を 💥 スパイカーに設定
+//   - 味方L+C を 🛡 ブロッカーに設定 (相手OLに対しての2枚ブロック)
+//   - ボールを OL 上空 高さ2.5m に配置(visible)
+function makeSimDefaultPattern() {
+  const our = defaultOurPlayers();
+  // 味方 L と C を ブロッカーにし、ややネットに寄せる
+  our.forEach(p => {
+    if (p.id === 'L') { p.isBlocker = true;  const sv = specToSvg(20, 55); p.x = sv.x; p.y = sv.y; }
+    if (p.id === 'C') { p.isBlocker = true;  const sv = specToSvg(38, 55); p.x = sv.x; p.y = sv.y; }
+    if (p.id === 'R') { const sv = specToSvg(80, 65); p.x = sv.x; p.y = sv.y; }
+    if (p.id === 'S') { const sv = specToSvg(60, 58); p.x = sv.x; p.y = sv.y; }
+  });
+  const opp = defaultOppPlayers();
+  // 相手OLをスパイカーに(身長160)
+  opp.forEach(p => {
+    if (p.id === 'OL') { p.isSpiker = true; p.heightCm = 160; }
+  });
+  // ボールはOLの真上(SVG)、高さ2.5m
+  const ol = opp.find(p => p.id === 'OL');
+  const ball = { x: ol.x, y: ol.y - 18, visible: true, h: 2.5 };
   return {
-    activePattern: 0,
-    patterns: Array.from({ length: 6 }, (_, i) => ({
-      title: `パターン ${i + 1}`,
-      ourPlayers: defaultOurPlayers(),
-      oppPlayers: defaultOppPlayers(),
-      attackerId: 'L',
-      memo: '',
-      preset: 'w-type',
-      ball: defaultBall(),
-      courses: [],   // { x2,y2, type:'strike'|'block'|'loop'|'feint' }
-      mode: 'place', // 'place' | 'course'
-      halfAngle: 15, // degrees, ± from course line
-      currentShotType: 'strike', // selected shot type for new courses
-    })),
+    title: '🤖 自動シミュレーション',
+    ourPlayers: our,
+    oppPlayers: opp,
+    attackerId: 'L',
+    memo: '相手スパイカー(💥)・ボール位置・味方ブロッカー(🛡)を配置 → 「🎯 シミュレーション」で打てそうなコースを自動生成',
+    preset: 'w-type',
+    ball,
+    courses: [],
+    mode: 'place',
+    halfAngle: 15,
+    currentShotType: 'strike',
+    isSim: true,
   };
 }
 
@@ -1237,8 +1317,16 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return makeDefaultState();
     const parsed = JSON.parse(raw);
-    if (!parsed.patterns || parsed.patterns.length !== 6) return makeDefaultState();
-    if (typeof parsed.activePattern !== 'number' || parsed.activePattern < 0 || parsed.activePattern > 5) {
+    if (!parsed.patterns || (parsed.patterns.length !== 6 && parsed.patterns.length !== 7)) return makeDefaultState();
+    // 旧データ(6パターン)に7番目=自動シミュレーションを追加
+    if (parsed.patterns.length === 6) {
+      parsed.patterns.push(makeSimDefaultPattern());
+    }
+    // パターン7が普通のパターンとして保存されていた場合のためにisSimフラグも保証
+    if (parsed.patterns[6] && typeof parsed.patterns[6].isSim !== 'boolean') {
+      parsed.patterns[6].isSim = true;
+    }
+    if (typeof parsed.activePattern !== 'number' || parsed.activePattern < 0 || parsed.activePattern > 6) {
       parsed.activePattern = 0;
     }
     // Backfill new fields if missing
@@ -1285,7 +1373,10 @@ function renderTabs() {
   patternTabs.innerHTML = '';
   state.patterns.forEach((pattern, idx) => {
     const btn = document.createElement('button');
-    btn.className = 'pattern-tab' + (idx === state.activePattern ? ' active' : '');
+    const isSim = (idx === SIM_PATTERN_IDX) || pattern.isSim;
+    btn.className = 'pattern-tab'
+      + (idx === state.activePattern ? ' active' : '')
+      + (isSim ? ' sim' : '');
     btn.setAttribute('role', 'tab');
     btn.setAttribute('aria-selected', idx === state.activePattern ? 'true' : 'false');
     const num = document.createElement('span');
@@ -1360,6 +1451,23 @@ function renderPattern(pattern, idx) {
   // Controls
   const controls = document.createElement('div');
   controls.className = 'card-controls';
+
+  // Simulation row (パターン7のみ)
+  if (idx === SIM_PATTERN_IDX || pattern.isSim) {
+    const simRow = document.createElement('div');
+    simRow.className = 'control-row sim-row';
+    simRow.innerHTML = `
+      <button class="sim-btn" data-action="simulate" title="相手スパイカー位置・ボール・味方ブロックから打てそうなコースを自動生成">
+        🎯 コースシミュレーション
+      </button>
+    `;
+    controls.appendChild(simRow);
+    const simNotes = document.createElement('div');
+    simNotes.className = 'sim-notes';
+    simNotes.dataset.role = 'sim-notes';
+    simNotes.textContent = '相手の💥スパイカー、ボール、味方の🛡ブロッカーを設定 → ボタンを押すと、スパイカーの身長・ボール位置・体勢から打てるコースを自動生成します';
+    controls.appendChild(simNotes);
+  }
 
   // Preset row
   const presetRow = document.createElement('div');
@@ -2026,6 +2134,27 @@ function wireCardEvents(card, idx) {
     }
   });
 
+  // シミュレーションボタン(パターン7のみ存在)
+  const simBtn = card.querySelector('[data-action="simulate"]');
+  if (simBtn) {
+    simBtn.addEventListener('click', () => {
+      const pattern = state.patterns[idx];
+      if (pattern.courses.length > 0) {
+        if (!confirm(`現在の${pattern.courses.length}本のコースをクリアして、シミュレーション結果に置き換えます。よろしいですか?`)) return;
+      }
+      const result = simulateCoursesForPattern(pattern);
+      pattern.courses = result.courses.map(c => ({ ...c }));
+      // 結果ノートを表示
+      const notesEl = card.querySelector('[data-role="sim-notes"]');
+      if (notesEl) {
+        notesEl.textContent = result.notes.join('\n');
+        notesEl.classList.add('has-result');
+      }
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+    });
+  }
+
   card.querySelector('[data-action="preset"]').addEventListener('change', (e) => {
     applyPreset(idx, e.target.value);
   });
@@ -2127,6 +2256,121 @@ function rerenderPatternKeepingFocus(idx) {
   renderTabs();
 }
 
+// ---------- COURSE SIMULATION (パターン7用) ----------
+// 入力: pattern (相手スパイカー、ボール、味方ブロッカーから読み取り)
+// 出力: { courses: [...], notes: [...] }
+//   ・スパイカーの体格(身長→ジャンプ到達点)とボール位置から打てる球種を絞り込む
+//   ・ブロックの有無で「ブロックを避けるコース」「ブロック利用」を出し分け
+//   ・ストレート/クロス/カット/フェイント/ループ/ブロックアウト の6種を生成
+function simulateCoursesForPattern(pattern) {
+  const notes = [];
+  const spiker = pattern.oppPlayers.find(p => p.isSpiker);
+  if (!spiker) return { courses: [], notes: ['❌ 相手選手の💥(スパイカー)を1人ONにしてください'] };
+  if (!pattern.ball || !pattern.ball.visible) return { courses: [], notes: ['❌ ボールを配置してください(2D編集→ボール配置)'] };
+
+  const ball = pattern.ball;
+  const blockers = pattern.ourPlayers.filter(p => p.isBlocker);
+
+  // ----- 身体スペック -----
+  const totalH = (spiker.heightCm || 155) / 100;             // 身長 m
+  const maxReach = SPIKE_JUMP_H + totalH + armReachAboveShoulder(totalH); // 指先到達 m
+  notes.push(`💥 ${spiker.id} 身長${spiker.heightCm}cm → ジャンプ最大到達 ${maxReach.toFixed(2)}m`);
+
+  // ----- ボール vs スパイカーの位置関係 -----
+  const SVG_PER_METER = (COURT.ourBottom - COURT.oppTop) / COURT_WORLD.length; // ≈35
+  const ballAheadSvg = ball.y - spiker.y; // 正=ネット側に進んでいる(良いセット)
+  const ballAheadM = ballAheadSvg / SVG_PER_METER;
+  const ballLatSvg = ball.x - spiker.x;
+  const ballLatM = ballLatSvg / SVG_PER_METER;
+
+  const ballTooHigh = ball.h > maxReach + 0.10;
+  const ballTooLow = ball.h < (totalH * 0.85);          // 肩より低い→打てない
+  const badSet = (ballAheadM < -0.4) || (ballAheadM > 2.5) || (Math.abs(ballLatM) > 1.6);
+
+  // ----- スパイカーの利き手向き(右利き想定): xが小さい側(左側) → クロスは右へ、ライン側は同方向 -----
+  const cxOur = (COURT.ourLeft + COURT.ourRight) / 2;
+  const isLeftSide = spiker.x < cxOur;       // SVG左側にいる = OL想定
+  const isRightSide = spiker.x > cxOur + 30; // SVG右側 = OR想定
+
+  // 我側コートの基準点(SVG)
+  const ourFront = COURT.ourTop;             // ネット直下(y=380)
+  const ourBack = COURT.ourBottom;           // 自エンドライン(y=660)
+  const ourMid = (ourFront + ourBack) / 2;
+  const ourDepth = ourBack - ourFront;       // 280
+  const ourWidth = COURT.ourRight - COURT.ourLeft; // 280
+
+  // ----- 打てない/弱い球しか出ない場合 -----
+  if (ballTooHigh) {
+    notes.push(`⚠ ボール高さ${ball.h.toFixed(2)}m > 到達${maxReach.toFixed(2)}m → 強打不可。フェイント/ループのみ`);
+  }
+  if (ballTooLow) {
+    notes.push(`⚠ ボール高さ${ball.h.toFixed(2)}m が肩より低い → 強打不可。アンダー処理`);
+  }
+  if (badSet && !ballTooHigh && !ballTooLow) {
+    notes.push(`⚠ ボール位置がスパイカー基準で前後${ballAheadM.toFixed(2)}m / 横${ballLatM.toFixed(2)}m → 体勢が悪く弱い球になりやすい`);
+  }
+
+  const canSpike = !ballTooHigh && !ballTooLow && !badSet;
+  const courses = [];
+
+  // ===== 共通: 着地点 → コース挿入のヘルパー =====
+  function clampX(x) { return Math.max(COURT.ourLeft + 8, Math.min(COURT.ourRight - 8, x)); }
+  function clampY(y) { return Math.max(ourFront + 8, Math.min(ourBack - 8, y)); }
+  function pushCourse(label, x2, y2, type, arc) {
+    courses.push({ x2, y2, type, arcHeight: arc });
+    notes.push(`  ${courses.length}. ${label} (${type})`);
+  }
+
+  if (canSpike) {
+    // ===== 強打クロス =====
+    // 左サイド攻撃→右後ろ深く / 右サイド→左後ろ深く / 中央→両クロス
+    if (isLeftSide) {
+      pushCourse('強打クロス(右後)', clampX(COURT.ourRight - 25), clampY(ourFront + ourDepth * 0.62), 'strike', 0.0);
+    } else if (isRightSide) {
+      pushCourse('強打クロス(左後)', clampX(COURT.ourLeft + 25), clampY(ourFront + ourDepth * 0.62), 'strike', 0.0);
+    } else {
+      pushCourse('強打クロス(右後)', clampX(COURT.ourRight - 30), clampY(ourFront + ourDepth * 0.55), 'strike', 0.0);
+      pushCourse('強打クロス(左後)', clampX(COURT.ourLeft + 30), clampY(ourFront + ourDepth * 0.55), 'strike', 0.0);
+    }
+    // ===== 強打ストレート(ライン) =====
+    pushCourse('強打ストレート', clampX(spiker.x), clampY(ourFront + ourDepth * 0.55), 'strike', 0.0);
+    // ===== 強打カット(短く鋭く内側へ) =====
+    const cutX = isLeftSide ? cxOur + 20 : (isRightSide ? cxOur - 20 : cxOur + 30);
+    pushCourse('強打カット(短く鋭角)', clampX(cutX), clampY(ourFront + ourDepth * 0.16), 'strike', 0.05);
+  }
+
+  // ===== フェイント / ティップ (ネット越え浅く) =====
+  // ボールが胸より上にあれば落とせる
+  if (ball.h > totalH * 0.9) {
+    const tipX = (isLeftSide ? cxOur + 25 : (isRightSide ? cxOur - 25 : spiker.x));
+    pushCourse('フェイント(ネット際)', clampX(tipX), clampY(ourFront + ourDepth * 0.10), 'feint', 0.6);
+  }
+
+  // ===== ループ(ブロック上を抜く) =====
+  if (blockers.length > 0 || ballTooHigh) {
+    pushCourse('ループ(深く高い軌道)', clampX(spiker.x), clampY(ourBack - 25), 'loop', 1.5);
+  }
+
+  // ===== ブロックアウト(ブロック利用) =====
+  if (blockers.length > 0 && canSpike) {
+    // スパイカーに最も近いブロッカーを選択
+    const sameBlocker = blockers.reduce((best, b) =>
+      best === null ? b : (Math.abs(b.x - spiker.x) < Math.abs(best.x - spiker.x) ? b : best), null);
+    if (sameBlocker) {
+      // ブロック手の外側を狙う(コート外=ワンタッチアウト)
+      const wipeOuter = (sameBlocker.x < cxOur) ? -28 : 28;
+      pushCourse('ブロックアウト(手の外側)', clampX(sameBlocker.x + wipeOuter), Math.max(ourFront - 18, COURT.playTop + 10), 'block', 0.5);
+    }
+  }
+
+  if (courses.length === 0) {
+    notes.push('💡 配置を整えてからもう一度お試しください');
+  } else {
+    notes.unshift(`✓ ${courses.length}本のコースを生成`);
+  }
+  return { courses, notes };
+}
+
 // ---------- ACTIONS ----------
 function applyPreset(idx, presetKey) {
   const preset = PRESETS[presetKey];
@@ -2161,7 +2405,7 @@ function resetPattern(idx) {
 
 // ---------- TOP BAR ACTIONS ----------
 document.getElementById('btnResetAll').addEventListener('click', () => {
-  if (confirm('全6パターンを初期状態にもどします。よろしいですか?')) {
+  if (confirm('全7パターン(自動シミュ含む)を初期状態にもどします。よろしいですか?')) {
     state = makeDefaultState();
     saveState();
     renderAll();
@@ -2746,6 +2990,7 @@ function addBall3D(scene, x, y, z) {
   const ball = new THREE.Mesh(geo, mat);
   ball.position.set(x, y, z);
   ball.castShadow = true;
+  ball.userData = { isBall: true };
   scene.add(ball);
   ballMesh = ball;
   // Cast a faint vertical line down to the floor (so 3D position is clear)
@@ -3398,7 +3643,18 @@ function onPointerDown(event) {
   if (event.button !== undefined && event.button !== 0) return;
   setNDC(event, canvasWrap);
   DRAG_RAYCASTER.setFromCamera(DRAG_POINTER, camera);
-  // 各playerGroupの全meshを再帰raycast
+  // 1) ボールが優先(球体は手前に出やすいので最初にチェック)
+  if (ballMesh) {
+    const ballHits = DRAG_RAYCASTER.intersectObject(ballMesh, false);
+    if (ballHits.length > 0) {
+      dragState = { isBall: true, startY: ballMesh.position.y };
+      if (controls) controls.enabled = false;
+      canvasWrap.style.cursor = 'grabbing';
+      event.preventDefault();
+      return;
+    }
+  }
+  // 2) 選手のmesh
   const targets = [];
   playerGroups.forEach(pg => {
     pg.group.traverse(obj => {
@@ -3407,13 +3663,11 @@ function onPointerDown(event) {
   });
   const hits = DRAG_RAYCASTER.intersectObjects(targets, false);
   if (hits.length === 0) return;
-  // 当たったmeshのgroup祖先を探す
   let node = hits[0].object;
   while (node && !node.userData?.isPlayer) node = node.parent;
   if (!node) return;
   const pg = playerGroups.find(p => p.group === node);
   if (!pg) return;
-  // ドラッグ開始
   dragState = pg;
   if (controls) controls.enabled = false;
   canvasWrap.style.cursor = 'grabbing';
@@ -3425,8 +3679,32 @@ function onPointerMove(event) {
   setNDC(event, canvasWrap);
   DRAG_RAYCASTER.setFromCamera(DRAG_POINTER, camera);
   const target = new THREE.Vector3();
+  // ボール: 現在の高さの水平面に投影(高さは保ったまま、水平移動)
+  if (dragState.isBall && ballMesh) {
+    const h = dragState.startY ?? ballMesh.position.y;
+    const ballPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -h);
+    if (DRAG_RAYCASTER.ray.intersectPlane(ballPlane, target)) {
+      const halfW = COURT_WORLD.width / 2 + 1.5;
+      const halfL = COURT_WORLD.length / 2 + 1.5;
+      const x = Math.max(-halfW, Math.min(halfW, target.x));
+      const z = Math.max(-halfL, Math.min(halfL, target.z));
+      ballMesh.position.x = x;
+      ballMesh.position.z = z;
+      // 真下の床に追従する破線(ballPole)も簡易に動かす
+      if (ballPole && ballPole.geometry) {
+        const pts = [
+          new THREE.Vector3(x, 0.01, z),
+          new THREE.Vector3(x, h, z),
+        ];
+        ballPole.geometry.setFromPoints(pts);
+        ballPole.computeLineDistances();
+      }
+    }
+    event.preventDefault();
+    return;
+  }
+  // 選手: 床面(y=0)に投影
   if (DRAG_RAYCASTER.ray.intersectPlane(DRAG_FLOOR_PLANE, target)) {
-    // クランプ:プレイ可能エリア(コート+1m余裕)
     const halfW = COURT_WORLD.width / 2 + 1;
     const halfL = COURT_WORLD.length / 2 + 1;
     const x = Math.max(-halfW, Math.min(halfW, target.x));
@@ -3439,22 +3717,28 @@ function onPointerMove(event) {
 
 function onPointerUp(event) {
   if (!dragState) return;
-  // ドラッグ終了 → SVG座標に逆変換して保存
-  const wx = dragState.group.position.x;
-  const wz = dragState.group.position.z;
-  const svg = worldToSvg(wx, wz);
   const state = window._volleyState();
   const pattern = state.patterns[currentIdx];
-  if (pattern) {
+  if (dragState.isBall && ballMesh && pattern) {
+    const wx = ballMesh.position.x;
+    const wz = ballMesh.position.z;
+    const svg = worldToSvg(wx, wz);
+    pattern.ball.x = svg.x;
+    pattern.ball.y = svg.y;
+    if (window._volleySave) window._volleySave();
+    rebuildSceneFromCurrent();
+    if (window._volleyRenderAll) window._volleyRenderAll();
+  } else if (dragState.group && pattern) {
+    const wx = dragState.group.position.x;
+    const wz = dragState.group.position.z;
+    const svg = worldToSvg(wx, wz);
     const list = (dragState.side === 'opp') ? pattern.oppPlayers : pattern.ourPlayers;
     const player = list.find(p => p.id === dragState.playerId);
     if (player) {
       player.x = svg.x;
       player.y = svg.y;
       if (window._volleySave) window._volleySave();
-      // ブロック型コースのデフレクション点が変わるのでシーン再構築
       rebuildSceneFromCurrent();
-      // 2Dカードを更新(3Dを閉じた時にも反映済みだが、ライブで反映したい場合はrenderAll)
       if (window._volleyRenderAll) window._volleyRenderAll();
     }
   }

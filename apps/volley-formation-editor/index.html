@@ -1092,7 +1092,8 @@ const PRESETS = {
 
 // ---------- STATE ----------
 // 旧データ(P1-P6)と互換性なし → キーをbumpして強制リセット
-const STORAGE_KEY = 'volley_formation_board_v4_es';
+// _es: 6役割モデル / _es2: コート縦横比 1:2 (16x8m) に変更後 — 古いSVG座標を破棄
+const STORAGE_KEY = 'volley_formation_board_v4_es2';
 
 function makeDefaultState() {
   return {

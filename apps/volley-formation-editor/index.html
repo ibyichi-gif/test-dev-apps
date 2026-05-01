@@ -3864,15 +3864,19 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
       }
       y = chord + bumpVal;
     } else if (type === 'floater' || type === 'jumpfloat') {
-      // 速度が乗っている間は完全水平(高さ=by を維持) → 速度を失った瞬間に急激に落下
+      // 直線フェーズの終端高さ = by + adjustedArc
+      //   adjustedArc=0 → 完全水平
+      //   adjustedArc>0 → 山スライダー値の分だけ上に向かって伸びる(打ち出し角度UP)
+      const endStraightY = by + adjustedArc;
       if (t <= straightF) {
-        // ストレート飛行: 高さ by のまま完全水平 (= 高さスライダーがそのまま反映される)
-        y = by;
+        // 直線フェーズ: by → endStraightY を線形に上昇 (arc=0なら水平)
+        const u = t / straightF;
+        y = by + (endStraightY - by) * u;
       } else {
-        // 落下フェーズ: 開始から急激に下に向かう(u^dropPower で終盤集中)
+        // 落下フェーズ: endStraightY から急激に降下
         // long は dropPower 小さめ = やわらかい弧、short/normal は大きく = ストン
         const u = (t - straightF) / (1 - straightF);
-        y = by + (targetY - by) * Math.pow(u, dropPower);
+        y = endStraightY + (targetY - endStraightY) * Math.pow(u, dropPower);
       }
     } else {
       // 通常 (strike/block/loop/underhand/sidearm/jump): chord + 中央ピーク放物線

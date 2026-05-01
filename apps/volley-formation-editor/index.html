@@ -1155,6 +1155,8 @@
       <select class="course-select" id="courseSelect">
         <option value="-1">-- なし --</option>
       </select>
+      <button class="cam-preset" id="playCourseBtn" title="選択中コースの軌道をボールが飛ぶアニメで再生" disabled>▶ 再生</button>
+      <span class="slider-val" id="playSpeedVal" style="min-width:auto;color:var(--text-dim)"></span>
       <span class="control-label" style="margin-left:6px">山</span>
       <input type="range" class="slider" id="arcSlider" min="0" max="4" step="0.05" value="0" disabled>
       <span class="slider-val" id="arcVal">0.00 m</span>
@@ -2858,11 +2860,32 @@ let animationId = null;
 // References for live update
 let ballMesh = null;
 let ballPole = null;       // dashed vertical line under ball
-const courseObjects = [];  // Array of {tube, ring, fan, courseIdx}
+const courseObjects = [];  // Array of {tube, ring, fan, courseIdx, animCurve}
 const currentBlockers = []; // Array of {x, z, handY, id, heightCm} world coords for active blockers
 const playerGroups = [];   // Array of {group, playerId, side} for drag-to-move
 let dragState = null;      // { group, playerId, side } | { isBall, startY } | { isCourseTarget, courseIdx } during drag
 let courseTargetHandle = null; // 選択中コースの落下点ハンドル(3Dでドラッグ可能)
+
+// 飛行アニメ用 (phantomBall)
+let phantomBall = null;
+let phantomTrail = null;        // 軌跡を残す小球の配列 mesh
+let animState = null;           // { curve, startTime, durationMs, courseIdx } | null
+
+// 球種・サーブ種ごとの飛行速度(m/s) — 小学生全国上位想定 (ベース×1.2)
+const COURSE_SPEED_MS = {
+  // ディグ系
+  strike:    14,    // 強打
+  block:      7,    // ワンタッチ後 (ブロック減速)
+  loop:       6,    // ループ
+  feint:      5,    // フェイント
+  // レセプション系 (サーブ)
+  underhand:  9,    // base 7
+  sidearm:   11,    // base 9
+  floater:   13,    // base 10
+  jumpfloat: 16,    // base 13
+  jump:      18,    // base 15
+};
+function speedForType(t) { return COURSE_SPEED_MS[t] || 10; }
 
 // World scale (小学生バレー): court 16m × 8m, net 2.00m, attack line 2.7m
 // 1 SVG unit ≈ 8/280 m ≈ 0.0286 m
@@ -3466,13 +3489,16 @@ function buildStrikeWithBlock(scene, bx, by, bz, tx, tz, blocker, halfAngleDeg, 
   bounceBadge.position.set(defl.x, 0.75, defl.z);
   scene.add(bounceBadge);
 
+  // animCurve: 全体の通過軌道(ball→hand→target)を1本のCatmullRomで構築
+  const allPts = phase1Points.concat(slipPts.slice(1));
+  const animCurve = new THREE.CatmullRomCurve3(allPts);
   courseObjects.push({
     tube: p1Tube, tubeGeo: p1Geo,
     slipTube, bounceTube,
     ring: slipRing, ringMat: slipRingMat,
     bounceRing, bounceRingMat,
     fan, badge, bounceBadge, hitMarker,
-    courseIdx, colorHex, type, isStrikeBlock: true,
+    courseIdx, colorHex, type, isStrikeBlock: true, animCurve,
   });
 }
 
@@ -3574,7 +3600,7 @@ function buildBlockTrajectory(scene, bx, by, bz, tx, tz, blocker, arcHeight, hal
   badge.position.set(tx, 0.85, tz);
   scene.add(badge);
 
-  courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, hitMarker, courseIdx, colorHex, type, isBlock: true });
+  courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, hitMarker, courseIdx, colorHex, type, isBlock: true, animCurve: curve });
 }
 
 function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, courseIdx) {
@@ -3676,8 +3702,8 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
   badge.position.set(tx, 0.85, tz);
   scene.add(badge);
 
-  // Register for live updates (with material refs for highlight/dim)
-  courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, courseIdx, colorHex, type });
+  // Register for live updates (with material refs for highlight/dim + animCurve for playback)
+  courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, courseIdx, colorHex, type, animCurve: curve });
 }
 
 // Small color-coded badge sprite shown at landing point: "#1 強打" / "#1 アンダー"
@@ -3876,6 +3902,8 @@ function cleanupScene() {
   playerGroups.length = 0;
   currentBlockers.length = 0;
   courseTargetHandle = null;
+  phantomBall = null;
+  animState = null;
   if (renderer) {
     renderer.dispose();
     if (renderer.domElement && renderer.domElement.parentNode) {
@@ -3900,6 +3928,7 @@ function cleanupScene() {
 function animate() {
   animationId = requestAnimationFrame(animate);
   if (controls) controls.update();
+  if (animState) tickPhantomBall();
   if (renderer && scene && camera) renderer.render(scene, camera);
 }
 
@@ -3937,11 +3966,14 @@ function initSliders(pattern) {
   });
 
   // Auto-select first course if any
+  const playBtn = document.getElementById('playCourseBtn');
+  const speedValEl = document.getElementById('playSpeedVal');
   if (pattern.courses.length > 0) {
     courseSelect.value = '0';
     syncArcSliderToCourse(0, pattern);
     highlightSelectedCourse(0);
     updateCourseTargetHandle(0);
+    if (playBtn) playBtn.disabled = false;
   } else {
     courseSelect.value = '-1';
     arcSlider.disabled = true;
@@ -3949,6 +3981,72 @@ function initSliders(pattern) {
     arcVal.textContent = '— —';
     highlightSelectedCourse(-1);
     updateCourseTargetHandle(-1);
+    if (playBtn) playBtn.disabled = true;
+  }
+  if (speedValEl) speedValEl.textContent = '';
+}
+
+// ---------- 3D COURSE PLAYBACK (phantom ball flying along trajectory) ----------
+function ensurePhantomBall() {
+  if (phantomBall) return phantomBall;
+  // 4号球サイズ + 発光リム
+  const geo = new THREE.SphereGeometry(0.105, 24, 18);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xfff2c4,
+    emissive: 0xff8a3a,
+    emissiveIntensity: 0.9,
+    transparent: true,
+    opacity: 0.95,
+  });
+  phantomBall = new THREE.Mesh(geo, mat);
+  phantomBall.visible = false;
+  return phantomBall;
+}
+
+function playSelectedCourse() {
+  if (!scene || currentIdx < 0) return;
+  const idx = parseInt(courseSelect.value, 10);
+  if (isNaN(idx) || idx < 0) return;
+  const co = courseObjects.find(c => c.courseIdx === idx);
+  if (!co || !co.animCurve) return;
+  const curve = co.animCurve;
+  const length = curve.getLength();
+  const speed = speedForType(co.type);
+  const durationMs = Math.max(150, (length / speed) * 1000);
+
+  ensurePhantomBall();
+  if (!phantomBall.parent) scene.add(phantomBall);
+  phantomBall.visible = true;
+  // 色を球種に合わせる
+  phantomBall.material.emissive.setHex(co.colorHex || 0xff8a3a);
+
+  animState = {
+    curve,
+    startTime: performance.now(),
+    durationMs,
+    courseIdx: idx,
+    speed,
+    distance: length,
+  };
+  // 再生ボタン下の速度表示を更新
+  const speedValEl = document.getElementById('playSpeedVal');
+  if (speedValEl) {
+    speedValEl.textContent = `${speed.toFixed(0)}m/s · ${(durationMs/1000).toFixed(2)}s · ${length.toFixed(1)}m`;
+  }
+}
+
+function tickPhantomBall() {
+  if (!animState || !phantomBall) return;
+  const elapsed = performance.now() - animState.startTime;
+  const t = Math.min(1, elapsed / animState.durationMs);
+  const point = animState.curve.getPoint(t);
+  phantomBall.position.copy(point);
+  if (t >= 1) {
+    // 終了 — 0.6秒後にフェードアウト
+    setTimeout(() => {
+      if (phantomBall) phantomBall.visible = false;
+    }, 600);
+    animState = null;
   }
 }
 
@@ -4353,7 +4451,19 @@ courseSelect.addEventListener('change', (e) => {
   syncArcSliderToCourse(idx, pattern);
   highlightSelectedCourse(isNaN(idx) ? -1 : idx);
   updateCourseTargetHandle(isNaN(idx) ? -1 : idx);
+  // 再生中アニメは中断
+  if (animState) { animState = null; if (phantomBall) phantomBall.visible = false; }
+  const playBtn = document.getElementById('playCourseBtn');
+  if (playBtn) playBtn.disabled = (isNaN(idx) || idx < 0);
+  const speedValEl = document.getElementById('playSpeedVal');
+  if (speedValEl) speedValEl.textContent = '';
 });
+
+// 再生ボタン
+const playCourseBtn = document.getElementById('playCourseBtn');
+if (playCourseBtn) {
+  playCourseBtn.addEventListener('click', playSelectedCourse);
+}
 
 arcSlider.addEventListener('input', (e) => {
   if (currentIdx < 0) return;

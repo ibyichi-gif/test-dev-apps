@@ -3026,23 +3026,37 @@ function findRelevantBlocker(bx, bz, tx, tz) {
   return best;
 }
 
-// 強打のラインから0.6m以内にブロッカーがいて、ボール~ターゲット間に位置するか
-// 強打が「ブロックに当たる/すり抜ける」可能性を持つかの判定
-function findBlockerOnStrikePath(bx, bz, tx, tz) {
+// 強打の3D軌道(ball→target直線、ボール高さ→0)が、ブロッカーの実際の手の範囲を通過する場合のみ干渉と判定
+// 「コースが吸い寄せられる」現象を防ぐため、横方向の判定だけでなく軌道高さもチェック:
+//   - 横距離: ブロッカー中心から ≤0.30m (両手のキャッチゾーン相当、片手0.15m × 2)
+//   - 縦距離: 軌道高さがブロッカーの[肩〜指先]の手の届く範囲内
+// 上記すべて満たさない場合は通常の直線軌道で描画される
+function findBlockerOnStrikePath(bx, by, bz, tx, tz) {
   if (!currentBlockers.length) return null;
   const dx = tx - bx, dz = tz - bz;
   const lineLenSq = dx * dx + dz * dz;
   if (lineLenSq < 0.01) return null;
-  let best = null, bestPerp = Infinity;
+  const targetY = 0.05;
+  let best = null, bestScore = Infinity;
   for (const b of currentBlockers) {
-    // 線分上の最近点パラメータ t (0=ball, 1=target)
+    // 線分上(xz平面投影)の最近点パラメータ t (0=ball, 1=target)
     const t = ((b.x - bx) * dx + (b.z - bz) * dz) / lineLenSq;
-    if (t < 0.05 || t > 0.95) continue; // 範囲外
+    if (t < 0.05 || t > 0.95) continue;
     const cx = bx + dx * t, cz = bz + dz * t;
-    const perp = Math.hypot(b.x - cx, b.z - cz);
-    if (perp < 0.7 && perp < bestPerp) {
-      best = b; bestPerp = perp;
-    }
+    const lateral = Math.hypot(b.x - cx, b.z - cz);
+    if (lateral > 0.30) continue; // 両手キャッチゾーン外
+
+    // 軌道高さ(strike=直線。chord = by*(1-t) + targetY*t)
+    const ly = by * (1 - t) + targetY * t;
+    // ブロッカーの手の高さレンジ:[肩〜指先]
+    const totalH = (b.heightCm || 150) / 100;
+    const shoulderH = BLOCK_JUMP_H + totalH * (1 - 2 * 0.067); // 肩 ≒ 全身 - 頭直径 + ジャンプ
+    const handTop = b.handY;                                    // 指先 (jumped)
+    if (ly < shoulderH - 0.10 || ly > handTop + 0.15) continue; // 高さ範囲外
+
+    // スコア:横距離+縦中心からのズレ
+    const score = lateral * 2 + Math.abs(ly - (shoulderH + handTop) / 2);
+    if (score < bestScore) { best = b; bestScore = score; }
   }
   return best;
 }
@@ -3291,9 +3305,11 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
     // ブロッカーがいない場合は通常の軌道にフォールバック
   }
 
-  // ====== STRIKE type with blocker on path: 同時に「すり抜け」「跳ね返り」両方を表示 ======
+  // ====== STRIKE type with blocker on path: 軌道が実際にブロックの手の範囲を通過する時のみ干渉描画 ======
+  // 通常はコース起動を優先して直線で描く。ブロックの手の3D範囲(横0.3m × 縦[肩〜指先])を通過した場合のみ
+  // 「すり抜けゴースト + 跳ね返り反射弧」の干渉ビジュアルに切替える。
   if (type === 'strike') {
-    const blkOnPath = findBlockerOnStrikePath(bx, bz, tx, tz);
+    const blkOnPath = findBlockerOnStrikePath(bx, by, bz, tx, tz);
     if (blkOnPath) {
       return buildStrikeWithBlock(scene, bx, by, bz, tx, tz, blkOnPath, halfAngleDeg, colorHex, type, courseIdx);
     }

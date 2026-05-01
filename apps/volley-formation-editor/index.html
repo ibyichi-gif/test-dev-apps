@@ -672,6 +672,12 @@
   .fan-block  { fill: var(--shot-block);  fill-opacity: 0.15; }
   .fan-loop   { fill: var(--shot-loop);   fill-opacity: 0.16; }
   .fan-feint  { fill: var(--shot-feint);  fill-opacity: 0.14; }
+  /* サーブ種ファン (ディグと同様の薄色) */
+  .fan-underhand { fill: #9bd47b; fill-opacity: 0.16; }
+  .fan-sidearm   { fill: #5dcaa5; fill-opacity: 0.16; }
+  .fan-floater   { fill: #ffd84d; fill-opacity: 0.14; }
+  .fan-jumpfloat { fill: #ff9500; fill-opacity: 0.14; }
+  .fan-jump      { fill: #ff5f4a; fill-opacity: 0.16; }
 
   .feint-marker {
     fill: var(--shot-feint);
@@ -2912,15 +2918,15 @@ let phantomTrail = null;        // 軌跡を残す小球の配列 mesh
 let animState = null;           // { curve, startTime, durationMs, courseIdx } | null
 
 // 球種・サーブ種ごとの「初速」(m/s) — 重力で軌道上の速度は変化する
-// 小学生全国上位想定 (前バージョンよりさらに増しで実戦感を再現)
+// 小学生全国上位想定 (インパクト速度ベース)
 const COURSE_SPEED_MS = {
   // ディグ系
-  strike:    18,    // 強打 (上位エース 16-20m/s)
+  strike:    22,    // 強打 (上位エース 20-24m/s インパクト)
   block:      8,    // ワンタッチ後 (ブロック減速)
-  loop:       9,    // ループ初速 (重力で減速し低速で滞空)
-  feint:      7,    // フェイント
+  loop:      12,    // ループ (アタック並みのインパクトだが軌道で減速)
+  feint:      4,    // フェイント (手元で上に小さく押し上げるだけ)
   // レセプション系 (サーブ)
-  underhand: 11,    // 高い山なり、初速控えめだが落下で加速
+  underhand: 11,
   sidearm:   13,
   floater:   15,
   jumpfloat: 18,
@@ -3408,11 +3414,65 @@ function makeTextSprite(text) {
   return sprite;
 }
 
+// ミカサV200W/V400W風 黄+紺の波形パネル風テクスチャ(キャンバス生成)
+let _mikasaTexture = null;
+function ensureMikasaTexture() {
+  if (_mikasaTexture) return _mikasaTexture;
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 512;
+  const ctx = c.getContext('2d');
+  // 黄色ベース
+  ctx.fillStyle = '#fbd024';
+  ctx.fillRect(0, 0, c.width, c.height);
+  // 紺色の波形パネル(3枚を等間隔に配置)
+  ctx.fillStyle = '#1c3a99';
+  const panelW = c.width / 3;
+  for (let p = 0; p < 3; p++) {
+    const baseX = p * panelW;
+    ctx.beginPath();
+    // 左エッジ:緩やかな波
+    ctx.moveTo(baseX + 32, 0);
+    for (let y = 0; y <= c.height; y += 12) {
+      const offset = Math.sin(y * 0.011) * 70;
+      ctx.lineTo(baseX + 32 + offset, y);
+    }
+    // 右エッジ:逆位相の波(戻り)
+    for (let y = c.height; y >= 0; y -= 12) {
+      const offset = Math.sin(y * 0.011 + Math.PI * 0.6) * 70;
+      ctx.lineTo(baseX + (panelW * 0.45) + offset, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  // ディンプル(微小な点)で表面の質感
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  for (let i = 0; i < 6500; i++) {
+    const x = Math.random() * c.width;
+    const y = Math.random() * c.height;
+    ctx.beginPath();
+    ctx.arc(x, y, 0.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 上端の控えめなハイライト
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(0, 0, c.width, 6);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 4;
+  _mikasaTexture = tex;
+  return tex;
+}
+
 function addBall3D(scene, x, y, z) {
   // 小学生バレー4号球: 円周62-64cm → 半径 ≈ 0.10m
-  const BALL_RADIUS = 0.101;  // 円周63.5cm相当
-  const geo = new THREE.SphereGeometry(BALL_RADIUS, 24, 18);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xfff2c4, roughness: 0.4, emissive: 0x554a30, emissiveIntensity: 0.3 });
+  const BALL_RADIUS = 0.101;
+  const geo = new THREE.SphereGeometry(BALL_RADIUS, 32, 24);
+  const mat = new THREE.MeshStandardMaterial({
+    map: ensureMikasaTexture(),
+    roughness: 0.45,
+    metalness: 0.05,
+  });
   const ball = new THREE.Mesh(geo, mat);
   ball.position.set(x, y, z);
   ball.castShadow = true;
@@ -3774,7 +3834,23 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
     let x = bx + dx * t;
     let z = bz + dz * t;
     const chord = by * (1 - t) + targetY * t;
-    const bump = 4 * t * (1 - t) * adjustedArc;
+    // 通常: 中央ピーク放物線 / フェイント: 手元で早期ピーク→失速して落下(伸びない)
+    let bump;
+    if (type === 'feint') {
+      // 早期頂点(t≈0.18)。立ち上がりはsmoothstep、落下はcosで「ふわっと押し上げ→ホバー→ストン」
+      const peakT = 0.18;
+      const apex = adjustedArc; // adjustedArc(=0.6×arcMult)が押し上げ高さ
+      if (t <= peakT) {
+        const u = t / peakT;
+        bump = apex * (3 * u * u - 2 * u * u * u);
+      } else {
+        const u = (t - peakT) / (1 - peakT);
+        // 落下フェーズ: 最初ゆっくり(滞空)→終盤加速(ストン)
+        bump = apex * Math.cos(u * Math.PI / 2);
+      }
+    } else {
+      bump = 4 * t * (1 - t) * adjustedArc;
+    }
     const y = chord + bump;
     if (wobbleAmp > 0) {
       // 揺れは終盤に発生(初速の高い区間は安定、減速で揺れ始める)
@@ -4101,14 +4177,14 @@ function initSliders(pattern) {
 // ---------- 3D COURSE PLAYBACK (phantom ball flying along trajectory) ----------
 function ensurePhantomBall() {
   if (phantomBall) return phantomBall;
-  // 4号球サイズ + 発光リム
-  const geo = new THREE.SphereGeometry(0.105, 24, 18);
+  // 4号球サイズ + ミカサ風テクスチャ + コース色の弱い発光
+  const geo = new THREE.SphereGeometry(0.105, 32, 24);
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xfff2c4,
+    map: ensureMikasaTexture(),
+    roughness: 0.45,
+    metalness: 0.05,
     emissive: 0xff8a3a,
-    emissiveIntensity: 0.9,
-    transparent: true,
-    opacity: 0.95,
+    emissiveIntensity: 0.35,  // 軌道色を弱めに乗せる(テクスチャを残す)
   });
   phantomBall = new THREE.Mesh(geo, mat);
   phantomBall.visible = false;
@@ -4134,6 +4210,8 @@ function playSelectedCourse() {
   if (!phantomBall.parent) scene.add(phantomBall);
   phantomBall.visible = true;
   phantomBall.material.emissive.setHex(co.colorHex || 0xff8a3a);
+  phantomBall.material.emissiveIntensity = 0.35; // 控えめ(ミカサ柄を活かす)
+  phantomBall.rotation.set(0, 0, 0);
 
   animState = {
     curve,
@@ -4168,6 +4246,16 @@ function tickPhantomBall() {
   const t = timeToParam(animState.timeMap, elapsedSec);
   const point = animState.curve.getPoint(t);
   phantomBall.position.copy(point);
+  // 回転(球種で違いを表現): フローター/JFは少なめ、強打/ジャンプは強めスピン
+  const co = courseObjects.find(c => c.courseIdx === animState.courseIdx);
+  const ttype = co ? co.type : 'strike';
+  let spinRate = 0.32;  // 既定: 強打クラス
+  if (ttype === 'floater' || ttype === 'jumpfloat') spinRate = 0.05; // 無回転に近い
+  else if (ttype === 'feint') spinRate = 0.08;
+  else if (ttype === 'underhand') spinRate = 0.18;
+  else if (ttype === 'loop') spinRate = 0.22;
+  phantomBall.rotation.x += spinRate;
+  phantomBall.rotation.z += spinRate * 0.6;
 }
 
 // ---------- 3D COURSE TARGET HANDLE ----------
@@ -4605,7 +4693,13 @@ function rebuildSceneFromCurrent() {
   // Save current camera position so user doesn't lose their angle
   const savedPos = camera ? camera.position.clone() : null;
   const savedTarget = controls ? controls.target.clone() : null;
-  buildScene(pattern);
+  // 例外で画面が真っ黒のまま固まらないようガード(originalシーンへ復帰を試みる)
+  try {
+    buildScene(pattern);
+  } catch (e) {
+    console.error('[volley-editor] buildScene failed during rebuild:', e);
+    // 失敗してもアニメループは止まらないようにする(古いsceneは残ったまま)
+  }
   if (savedPos && camera) camera.position.copy(savedPos);
   if (savedTarget && controls) controls.target.copy(savedTarget);
   if (controls) controls.update();
@@ -4614,8 +4708,12 @@ function rebuildSceneFromCurrent() {
   // Re-apply selected course highlight + drag handle
   const selIdx = parseInt(courseSelect.value, 10);
   const validIdx = isNaN(selIdx) ? -1 : selIdx;
-  if (validIdx >= 0) highlightSelectedCourse(validIdx);
-  updateCourseTargetHandle(validIdx);
+  try {
+    if (validIdx >= 0) highlightSelectedCourse(validIdx);
+    updateCourseTargetHandle(validIdx);
+  } catch (e) {
+    console.error('[volley-editor] highlight/handle update failed:', e);
+  }
 }
 
 // ---------- ENTRY ----------

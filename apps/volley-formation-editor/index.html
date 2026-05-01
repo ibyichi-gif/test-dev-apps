@@ -1437,6 +1437,7 @@ function makeDefaultState() {
     scene: 'dig',                      // 'dig' | 'reception'
     currentShotType: 'strike',         // ディグ時の球種
     currentServeType: 'underhand',     // レセプション時のサーブ種
+    currentServeRange: 'normal',       // floater/jumpfloat時の距離: short|normal|long
     receiverTargetId: 'S',             // パス先(レセプション時のターゲットセッター)
   }));
   patterns.push(makeSimDefaultPattern());
@@ -1510,7 +1511,12 @@ function loadState() {
       // シーン分離(_es5)
       if (!p.scene) p.scene = 'dig';
       if (!p.currentServeType) p.currentServeType = 'underhand';
+      if (!p.currentServeRange) p.currentServeRange = 'normal';
       if (!p.receiverTargetId) p.receiverTargetId = 'S';
+      // 既存コースに range が無い floater/jumpfloat は normal でbackfill
+      (p.courses || []).forEach(c => {
+        if ((c.type === 'floater' || c.type === 'jumpfloat') && !c.range) c.range = 'normal';
+      });
       // Backfill heightCm / isBlocker / isSpiker for existing players
       (p.ourPlayers || []).forEach(pl => {
         if (typeof pl.heightCm !== 'number') pl.heightCm = defaultHeightFor(pl.id);
@@ -1747,6 +1753,24 @@ function renderPattern(pattern, idx) {
     `;
   }
   controls.appendChild(shotRow);
+
+  // フローター/ジャンプフロートのときだけ「距離」チップ行を追加
+  if (pattern.scene === 'reception' &&
+      (pattern.currentServeType === 'floater' || pattern.currentServeType === 'jumpfloat')) {
+    const ranges = [
+      { key: 'short',  label: '短(ネット直後)' },
+      { key: 'normal', label: '通常' },
+      { key: 'long',   label: '奥(エンドライン側)' },
+    ];
+    const currentRange = pattern.currentServeRange || 'normal';
+    const rangeRow = document.createElement('div');
+    rangeRow.className = 'control-row';
+    const rangeHtml = ranges.map(r =>
+      `<button class="shot-chip range-chip ${currentRange === r.key ? 'active' : ''}" data-action="serve-range" data-range="${r.key}">${r.label}</button>`
+    ).join('');
+    rangeRow.innerHTML = `<span class="control-label">距離</span><div class="shot-chips">${rangeHtml}</div>`;
+    controls.appendChild(rangeRow);
+  }
 
   // Team profile row (身長分布の一括適用)
   const teamRow = document.createElement('div');
@@ -2341,10 +2365,14 @@ function setupCourseModeHandlers(svg, idx) {
     const courseType = (pattern.scene === 'reception')
       ? (pattern.currentServeType || 'underhand')
       : (pattern.currentShotType || 'strike');
+    const courseRange = (pattern.scene === 'reception' && (courseType === 'floater' || courseType === 'jumpfloat'))
+      ? (pattern.currentServeRange || 'normal')
+      : null;
     pattern.courses.push({
       x2: drawData.x2,
       y2: drawData.y2,
       type: courseType,
+      range: courseRange,
       arcHeight: DEFAULT_ARC[courseType] ?? 0,
     });
     drawData = null;
@@ -2516,6 +2544,14 @@ function wireCardEvents(card, idx) {
       if (state.patterns[idx].mode !== 'course') {
         state.patterns[idx].mode = 'course';
       }
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+    });
+  });
+  // 距離チップ(floater/jumpfloat時のみ)
+  card.querySelectorAll('[data-action="serve-range"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.patterns[idx].currentServeRange = btn.dataset.range;
       saveState();
       rerenderPatternKeepingFocus(idx);
     });
@@ -2890,7 +2926,42 @@ const COURSE_SPEED_MS = {
   jumpfloat: 18,
   jump:      22,    // エース級
 };
-function speedForType(t) { return COURSE_SPEED_MS[t] || 10; }
+// 距離レンジ係数 (フローター/ジャンプフロート用)
+//   短 = やや遅く速く落ちる / 通常 / 奥 = 速く伸びる
+const RANGE_SPEED_MULT = { short: 0.80, normal: 1.0, long: 1.18 };
+function speedForType(t, range) {
+  const base = COURSE_SPEED_MS[t] || 10;
+  if (range && (t === 'floater' || t === 'jumpfloat')) {
+    return base * (RANGE_SPEED_MULT[range] || 1.0);
+  }
+  return base;
+}
+
+// 揺れエンベロープ — 初速の高い区間は安定、減速して空気抵抗を受けやすくなる後半でブレ始める
+//   smoothstep を t = startT 〜 1.0 で適用
+//   range='short': 早く減速するので startT が早い
+//   range='long' : 速度が乗っている分、揺れ始めが遅い
+function wobbleEnvelope(t, range) {
+  const startT = ({ short: 0.30, normal: 0.50, long: 0.65 })[range || 'normal'];
+  if (t < startT) return 0;
+  const u = Math.min(1, (t - startT) / (1 - startT));
+  return u * u * (3 - 2 * u);
+}
+
+// 球種・サーブ種の表示名 (3Dコース選択ドロップダウン・着地バッジで使用)
+const COURSE_TYPE_LABELS = {
+  strike: '強打', block: 'ワンタッチ', loop: 'ループ', feint: 'フェイント',
+  underhand: 'アンダー', sidearm: 'サイドハンド',
+  floater: 'フローター', jumpfloat: 'ジャンプフロート', jump: 'ジャンプサーブ',
+};
+const RANGE_LABELS = { short: '短', normal: '通常', long: '奥' };
+function labelForCourse(type, range) {
+  const base = COURSE_TYPE_LABELS[type] || '?';
+  if (range && (type === 'floater' || type === 'jumpfloat')) {
+    return `${base}(${RANGE_LABELS[range] || ''})`;
+  }
+  return base;
+}
 
 // ====== 弾道時刻マップ (energy conservation) ======
 // curve(0..1) を初速 v0 で進む時の「経過時間→曲線パラメータ t」変換テーブルを構築。
@@ -3059,7 +3130,7 @@ function buildScene(pattern) {
     pattern.courses.forEach((c, ci) => {
       const target = svgToWorld(c.x2, c.y2);
       const arcH = (typeof c.arcHeight === 'number') ? c.arcHeight : (DEFAULT_ARC[c.type] ?? 0);
-      addCourse3D(scene, w.x, ballH, w.z, target.x, target.z, c.type || 'strike', pattern.halfAngle, arcH, ci);
+      addCourse3D(scene, w.x, ballH, w.z, target.x, target.z, c.type || 'strike', pattern.halfAngle, arcH, ci, c.range || null);
     });
   }
 
@@ -3641,7 +3712,7 @@ function buildBlockTrajectory(scene, bx, by, bz, tx, tz, blocker, arcHeight, hal
   courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, hitMarker, courseIdx, colorHex, type, isBlock: true, animCurve: curve });
 }
 
-function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, courseIdx) {
+function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, courseIdx, range) {
   // Target lands on the court (y=0)
   const targetY = 0.05;
   // サーブ系 / 球種 で色を決定
@@ -3692,17 +3763,23 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
   // フローター系のラテラル揺れ
   const serveInfo = SERVE_TYPES[type];
   const wobbleAmp = serveInfo ? serveInfo.wobble : 0;
+  // 距離レンジが arcHeight と揺れタイミングに影響
+  //   short: 弧やや高く・揺れ早く始まる(=減速早い表現)
+  //   long : 弧やや低く・揺れ遅く始まる(=速度乗っていて伸びる)
+  const arcMult = ({ short: 1.15, normal: 1.0, long: 0.78 })[range || 'normal'];
+  const adjustedArc = arcHeight * arcMult;
 
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
     let x = bx + dx * t;
     let z = bz + dz * t;
     const chord = by * (1 - t) + targetY * t;
-    const bump = 4 * t * (1 - t) * arcHeight;
+    const bump = 4 * t * (1 - t) * adjustedArc;
     const y = chord + bump;
     if (wobbleAmp > 0) {
-      // 軌道の中盤で揺れが大きく、後半は減衰
-      const wob = Math.sin(t * Math.PI * 5) * wobbleAmp * (1 - 0.4 * t);
+      // 揺れは終盤に発生(初速の高い区間は安定、減速で揺れ始める)
+      const env = wobbleEnvelope(t, range);
+      const wob = Math.sin(t * Math.PI * 6) * wobbleAmp * env;
       x += px * wob;
       z += pz * wob;
     }
@@ -3736,19 +3813,17 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
 
   // Course number badge — small sprite floating above the landing point
   // Visible enough to identify the course, but small to avoid clutter
-  const badge = makeCourseBadge(courseIdx + 1, type, colorHex);
+  const badge = makeCourseBadge(courseIdx + 1, type, colorHex, range);
   badge.position.set(tx, 0.85, tz);
   scene.add(badge);
 
   // Register for live updates (with material refs for highlight/dim + animCurve for playback)
-  courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, courseIdx, colorHex, type, animCurve: curve });
+  courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, courseIdx, colorHex, type, range, animCurve: curve });
 }
 
-// Small color-coded badge sprite shown at landing point: "#1 強打" / "#1 アンダー"
-function makeCourseBadge(num, type, colorHex) {
-  const shotLabels = { strike: '強打', block: 'ワンタッチ', loop: 'ループ', feint: 'フェイント' };
-  const serveLabel = SERVE_TYPES[type] ? SERVE_TYPES[type].name : null;
-  const labelTxt = serveLabel || shotLabels[type] || '';
+// Small color-coded badge sprite shown at landing point: "#1 強打" / "#1 アンダー" / "#2 フローター(奥)"
+function makeCourseBadge(num, type, colorHex, range) {
+  const labelTxt = labelForCourse(type, range);
   const text = `#${num} ${labelTxt}`;
   const canvas = document.createElement('canvas');
   canvas.width = 192; canvas.height = 56;
@@ -3996,10 +4071,9 @@ function initSliders(pattern) {
   // Course list
   courseSelect.innerHTML = '<option value="-1">-- なし --</option>';
   pattern.courses.forEach((c, i) => {
-    const labels = { strike: '強打', block: 'ワンタッチ', loop: 'ループ', feint: 'フェイント' };
     const opt = document.createElement('option');
     opt.value = i;
-    opt.textContent = `#${i + 1} ${labels[c.type] || '?'}`;
+    opt.textContent = `#${i + 1} ${labelForCourse(c.type, c.range)}`;
     courseSelect.appendChild(opt);
   });
 
@@ -4049,7 +4123,7 @@ function playSelectedCourse() {
   if (!co || !co.animCurve) return;
   const curve = co.animCurve;
   const length = curve.getLength();
-  const v0 = speedForType(co.type);
+  const v0 = speedForType(co.type, co.range);
   const timeMap = buildBallisticTimeMap(curve, v0);
   // 着地時の速度(参考表示用) — energy conservation
   const pStart = curve.getPoint(0);

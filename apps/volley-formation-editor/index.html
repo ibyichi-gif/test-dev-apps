@@ -2946,7 +2946,7 @@ function speedForType(t, range) {
 // 揺れエンベロープ — 初速の高い区間は安定、減速して空気抵抗を受けやすくなる後半でブレ始める
 //   straightF (直線→落下の境界) と一致させて、落下開始タイミングで揺れが顕在化
 function wobbleEnvelope(t, range) {
-  const startT = ({ short: 0.40, normal: 0.62, long: 0.80 })[range || 'normal'];
+  const startT = ({ short: 0.42, normal: 0.65, long: 0.85 })[range || 'normal'];
   if (t < startT) return 0;
   const u = Math.min(1, (t - startT) / (1 - startT));
   return u * u * (3 - 2 * u);
@@ -3818,9 +3818,10 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
     px = -uz; pz = ux;
   }
 
-  // フローター系のラテラル揺れ
+  // フローター系のラテラル揺れ (range で振幅も補正: long は速度を保つので揺れ少なめ)
   const serveInfo = SERVE_TYPES[type];
-  const wobbleAmp = serveInfo ? serveInfo.wobble : 0;
+  const wobbleRangeMult = ({ short: 1.30, normal: 1.0, long: 0.55 })[range || 'normal'];
+  const wobbleAmp = (serveInfo ? serveInfo.wobble : 0) * wobbleRangeMult;
   // 距離レンジが arcHeight と揺れタイミングに影響
   //   short: 弧やや高く・揺れ早く始まる(=減速早い表現)
   //   long : 弧やや低く・揺れ遅く始まる(=速度乗っていて伸びる)
@@ -3828,11 +3829,12 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
   const adjustedArc = arcHeight * arcMult;
 
   // フローター系の「直線フェーズ→落下フェーズ」の境界 (range毎)
-  //   short: 早く減速 → 早く落ちる(ネット直後付近) / long: 速度が乗ったまま伸びてエンドラインで落下
-  const straightF = ({ short: 0.40, normal: 0.62, long: 0.80 })[range || 'normal'];
-  // 直線フェーズ終端の高さ(開始から微小下降)
-  const FLOATER_END_STRAIGHT_DROP = 0.45; // m
-  const endStraightY = by - FLOATER_END_STRAIGHT_DROP;
+  //   short: 早く減速 → ネット越え後すぐに失速して急激に落下
+  //   normal: 中程度の伸び → 中盤で失速して急激に落下
+  //   long: 速度を保ったまま伸びてエンドラインで穏やかに落下
+  const straightF = ({ short: 0.42, normal: 0.65, long: 0.85 })[range || 'normal'];
+  // 落下フェーズの曲線指数: 大=急激な落下(終盤に集中) / 小=ゆるやか
+  const dropPower = ({ short: 3.2, normal: 3.0, long: 2.0 })[range || 'normal'];
   // フェイント: ブロッカーを越すように下から突き上げ→ふわっと落下
   // ピーク高さは「開始位置 + apexAboveStart」(チョード基準ではなく絶対基準で押し上げる)
   const apexAboveStart = Math.max(0.45, adjustedArc * 1.4);  // 既定 ~0.84m上(arcスライダーで微調整可)
@@ -3862,15 +3864,15 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
       }
       y = chord + bumpVal;
     } else if (type === 'floater' || type === 'jumpfloat') {
-      // 速度が乗っている間はほぼ直線(微小下降)、減速してから加速度的に落ちる
+      // 速度が乗っている間は完全水平(高さ=by を維持) → 速度を失った瞬間に急激に落下
       if (t <= straightF) {
-        const u = t / straightF;
-        // フラット軌道: by → endStraightY を線形(ほぼ水平)
-        y = by + (endStraightY - by) * u;
+        // ストレート飛行: 高さ by のまま完全水平 (= 高さスライダーがそのまま反映される)
+        y = by;
       } else {
-        // 落下フェーズ: 残りで target に u^2 で加速して降りる(初期勾配0で滑らかに繋がる)
+        // 落下フェーズ: 開始から急激に下に向かう(u^dropPower で終盤集中)
+        // long は dropPower 小さめ = やわらかい弧、short/normal は大きく = ストン
         const u = (t - straightF) / (1 - straightF);
-        y = endStraightY + (targetY - endStraightY) * (u * u);
+        y = by + (targetY - by) * Math.pow(u, dropPower);
       }
     } else {
       // 通常 (strike/block/loop/underhand/sidearm/jump): chord + 中央ピーク放物線

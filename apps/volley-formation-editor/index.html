@@ -2429,11 +2429,15 @@ function wireCardEvents(card, idx) {
     applyPreset(idx, e.target.value);
   });
 
-  card.querySelector('[data-action="attacker"]').addEventListener('change', (e) => {
-    state.patterns[idx].attackerId = e.target.value;
-    saveState();
-    rerenderPatternKeepingFocus(idx);
-  });
+  // ディグ時のみ attacker セレクタが存在 (null-safe)
+  const attackerSel = card.querySelector('[data-action="attacker"]');
+  if (attackerSel) {
+    attackerSel.addEventListener('change', (e) => {
+      state.patterns[idx].attackerId = e.target.value;
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+    });
+  }
 
   card.querySelector('[data-action="memo"]').addEventListener('input', (e) => {
     state.patterns[idx].memo = e.target.value;

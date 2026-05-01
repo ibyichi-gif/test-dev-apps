@@ -1063,7 +1063,7 @@
     </details>
   </div>
   <div class="view3d-canvas-wrap" id="view3dCanvasWrap">
-    <div class="view3d-hint">選手・ボールをドラッグ:移動(ボールは現在の高さで水平移動) / 何もない所:回転 / ホイール:ズーム / 右ドラッグ:パン</div>
+    <div class="view3d-hint">選手・ボール・選択中コースの🟡ピンをドラッグで移動 / 何もない所:回転 / ホイール:ズーム / 右ドラッグ:パン</div>
   </div>
 </div>
 
@@ -2568,7 +2568,8 @@ let ballPole = null;       // dashed vertical line under ball
 const courseObjects = [];  // Array of {tube, ring, fan, courseIdx}
 const currentBlockers = []; // Array of {x, z, handY, id, heightCm} world coords for active blockers
 const playerGroups = [];   // Array of {group, playerId, side} for drag-to-move
-let dragState = null;      // { group, playerId, side, plane } during drag
+let dragState = null;      // { group, playerId, side } | { isBall, startY } | { isCourseTarget, courseIdx } during drag
+let courseTargetHandle = null; // 選択中コースの落下点ハンドル(3Dでドラッグ可能)
 
 // World scale (小学生バレー): court 16m × 8m, net 2.00m, attack line 2.7m
 // 1 SVG unit ≈ 8/280 m ≈ 0.0286 m
@@ -3549,6 +3550,7 @@ function cleanupScene() {
   courseObjects.length = 0;
   playerGroups.length = 0;
   currentBlockers.length = 0;
+  courseTargetHandle = null;
   if (renderer) {
     renderer.dispose();
     if (renderer.domElement && renderer.domElement.parentNode) {
@@ -3614,13 +3616,84 @@ function initSliders(pattern) {
     courseSelect.value = '0';
     syncArcSliderToCourse(0, pattern);
     highlightSelectedCourse(0);
+    updateCourseTargetHandle(0);
   } else {
     courseSelect.value = '-1';
     arcSlider.disabled = true;
     arcSlider.value = 0;
     arcVal.textContent = '— —';
     highlightSelectedCourse(-1);
+    updateCourseTargetHandle(-1);
   }
+}
+
+// ---------- 3D COURSE TARGET HANDLE ----------
+// 選択中コースの着地点に「ドラッグ可能なピン」を立てる。
+// ピンをドラッグしてコース終点(x2/y2)をリアルタイムで動かせる。
+function buildCourseTargetHandle(worldX, worldZ) {
+  const group = new THREE.Group();
+  // 地面のリング
+  const ringGeo = new THREE.RingGeometry(0.20, 0.30, 36);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xfff2c4, side: THREE.DoubleSide, transparent: true, opacity: 0.85, depthTest: false });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.03;
+  ring.renderOrder = 999;
+  group.add(ring);
+  // 縦の細いポール
+  const poleGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.55, 8);
+  const poleMat = new THREE.MeshBasicMaterial({ color: 0xfff2c4, transparent: true, opacity: 0.7, depthTest: false });
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.y = 0.275;
+  pole.renderOrder = 999;
+  group.add(pole);
+  // 上部の大きな球(つかみやすく)
+  const knobGeo = new THREE.SphereGeometry(0.13, 18, 14);
+  const knobMat = new THREE.MeshStandardMaterial({
+    color: 0xfff2c4, emissive: 0xfff2c4, emissiveIntensity: 0.85,
+    transparent: true, opacity: 0.95,
+  });
+  const knob = new THREE.Mesh(knobGeo, knobMat);
+  knob.position.y = 0.62;
+  group.add(knob);
+  // 軽くパルスするように小さなリングを上空に
+  const haloGeo = new THREE.RingGeometry(0.16, 0.20, 28);
+  const haloMat = new THREE.MeshBasicMaterial({ color: 0xfff2c4, side: THREE.DoubleSide, transparent: true, opacity: 0.5, depthTest: false });
+  const halo = new THREE.Mesh(haloGeo, haloMat);
+  halo.rotation.x = -Math.PI / 2;
+  halo.position.y = 0.62;
+  halo.renderOrder = 999;
+  group.add(halo);
+  group.position.set(worldX, 0, worldZ);
+  group.userData = { isCourseTarget: true };
+  return group;
+}
+
+function updateCourseTargetHandle(courseIdx) {
+  // 古いハンドル削除
+  if (courseTargetHandle) {
+    if (scene) scene.remove(courseTargetHandle);
+    courseTargetHandle.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        if (Array.isArray(o.material)) o.material.forEach(m => m.dispose());
+        else o.material.dispose();
+      }
+    });
+    courseTargetHandle = null;
+  }
+  if (!scene || courseIdx == null || courseIdx < 0) return;
+  const state = window._volleyState && window._volleyState();
+  if (!state || currentIdx < 0) return;
+  const pattern = state.patterns[currentIdx];
+  if (!pattern) return;
+  const c = pattern.courses[courseIdx];
+  if (!c) return;
+  const t = svgToWorld(c.x2, c.y2);
+  const handle = buildCourseTargetHandle(t.x, t.z);
+  handle.userData.courseIdx = courseIdx;
+  scene.add(handle);
+  courseTargetHandle = handle;
 }
 
 // ---------- 3D DRAG PLAYERS ----------
@@ -3643,7 +3716,20 @@ function onPointerDown(event) {
   if (event.button !== undefined && event.button !== 0) return;
   setNDC(event, canvasWrap);
   DRAG_RAYCASTER.setFromCamera(DRAG_POINTER, camera);
-  // 1) ボールが優先(球体は手前に出やすいので最初にチェック)
+  // 1) コース着地ハンドル(優先 — 線の上にあるのでつかみやすく)
+  if (courseTargetHandle) {
+    const handleTargets = [];
+    courseTargetHandle.traverse(o => { if (o.isMesh) handleTargets.push(o); });
+    const hHits = DRAG_RAYCASTER.intersectObjects(handleTargets, false);
+    if (hHits.length > 0) {
+      dragState = { isCourseTarget: true, courseIdx: courseTargetHandle.userData.courseIdx };
+      if (controls) controls.enabled = false;
+      canvasWrap.style.cursor = 'grabbing';
+      event.preventDefault();
+      return;
+    }
+  }
+  // 2) ボール
   if (ballMesh) {
     const ballHits = DRAG_RAYCASTER.intersectObject(ballMesh, false);
     if (ballHits.length > 0) {
@@ -3654,7 +3740,7 @@ function onPointerDown(event) {
       return;
     }
   }
-  // 2) 選手のmesh
+  // 3) 選手のmesh
   const targets = [];
   playerGroups.forEach(pg => {
     pg.group.traverse(obj => {
@@ -3679,6 +3765,19 @@ function onPointerMove(event) {
   setNDC(event, canvasWrap);
   DRAG_RAYCASTER.setFromCamera(DRAG_POINTER, camera);
   const target = new THREE.Vector3();
+  // コース着地ハンドル: 床面に投影
+  if (dragState.isCourseTarget && courseTargetHandle) {
+    if (DRAG_RAYCASTER.ray.intersectPlane(DRAG_FLOOR_PLANE, target)) {
+      const halfW = COURT_WORLD.width / 2 + 1;
+      const halfL = COURT_WORLD.length / 2 + 1;
+      const x = Math.max(-halfW, Math.min(halfW, target.x));
+      const z = Math.max(-halfL, Math.min(halfL, target.z));
+      courseTargetHandle.position.x = x;
+      courseTargetHandle.position.z = z;
+    }
+    event.preventDefault();
+    return;
+  }
   // ボール: 現在の高さの水平面に投影(高さは保ったまま、水平移動)
   if (dragState.isBall && ballMesh) {
     const h = dragState.startY ?? ballMesh.position.y;
@@ -3719,6 +3818,24 @@ function onPointerUp(event) {
   if (!dragState) return;
   const state = window._volleyState();
   const pattern = state.patterns[currentIdx];
+  // コース着地ハンドル: x2/y2を更新してシーン再構築
+  if (dragState.isCourseTarget && courseTargetHandle && pattern) {
+    const wx = courseTargetHandle.position.x;
+    const wz = courseTargetHandle.position.z;
+    const svg = worldToSvg(wx, wz);
+    const c = pattern.courses[dragState.courseIdx];
+    if (c) {
+      c.x2 = svg.x;
+      c.y2 = svg.y;
+      if (window._volleySave) window._volleySave();
+      rebuildSceneFromCurrent();
+      if (window._volleyRenderAll) window._volleyRenderAll();
+    }
+    if (controls) controls.enabled = true;
+    canvasWrap.style.cursor = '';
+    dragState = null;
+    return;
+  }
   if (dragState.isBall && ballMesh && pattern) {
     const wx = ballMesh.position.x;
     const wz = ballMesh.position.z;
@@ -3910,6 +4027,7 @@ courseSelect.addEventListener('change', (e) => {
   const idx = parseInt(e.target.value, 10);
   syncArcSliderToCourse(idx, pattern);
   highlightSelectedCourse(isNaN(idx) ? -1 : idx);
+  updateCourseTargetHandle(isNaN(idx) ? -1 : idx);
 });
 
 arcSlider.addEventListener('input', (e) => {
@@ -3938,9 +4056,11 @@ function rebuildSceneFromCurrent() {
   if (controls) controls.update();
   // buildScene -> cleanupScene cancels the animation loop. Restart it.
   if (!animationId) animate();
-  // Re-apply selected course highlight
+  // Re-apply selected course highlight + drag handle
   const selIdx = parseInt(courseSelect.value, 10);
-  if (!isNaN(selIdx)) highlightSelectedCourse(selIdx);
+  const validIdx = isNaN(selIdx) ? -1 : selIdx;
+  if (validIdx >= 0) highlightSelectedCourse(validIdx);
+  updateCourseTargetHandle(validIdx);
 }
 
 // ---------- ENTRY ----------

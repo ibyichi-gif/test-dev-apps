@@ -500,6 +500,51 @@
     user-select: none;
   }
 
+  /* ----- team profile row ----- */
+  .team-profile-row {
+    background: rgba(244,167,42,0.06);
+    padding: 6px 8px;
+    border-radius: 3px;
+    border: 1px solid rgba(244,167,42,0.2);
+  }
+  .team-profile-select {
+    flex: 1;
+    min-width: 140px;
+    background: var(--bg-deep);
+    color: var(--text-main);
+    border: 1px solid var(--line-strong);
+    padding: 4px 6px;
+    font-size: 11px;
+    border-radius: 2px;
+    font-family: "Noto Sans JP", sans-serif;
+  }
+  .team-profile-note {
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 4px 8px;
+    border-left: 2px solid rgba(244,167,42,0.4);
+    margin: 4px 0;
+    line-height: 1.5;
+    white-space: pre-line;
+    background: rgba(0,0,0,0.18);
+    border-radius: 0 3px 3px 0;
+  }
+  .team-profile-row .small-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+  .team-profile-row .small-btn.our-btn {
+    background: rgba(244,167,42,0.15);
+    border-color: var(--accent-our);
+    color: var(--accent-our);
+  }
+  .team-profile-row .small-btn.opp-btn {
+    background: rgba(77,106,138,0.18);
+    border-color: var(--accent-opp);
+    color: #a8c0dc;
+  }
+
   /* ----- simulation pattern (パターン7) ----- */
   .pattern-tab.sim {
     border-color: #b876ff;
@@ -1122,6 +1167,55 @@ function specToSvg(sx, sy) {
 //  L/R(スパイカー):160, C/S(センター/セッター=ブロッカー):155, LB/RB(レシーバー):150/145
 const DEFAULT_HEIGHTS_CM = { L: 160, R: 160, C: 155, S: 155, LB: 150, RB: 145 };
 const STANDARD_HEIGHT_CM = 150;
+
+// ---------- TEAM HEIGHT PROFILES ----------
+// 実在チームの身長分布(匿名化、出典明記)。位置/陣形/ポーズには触らず、
+// 各役割IDの heightCm のみ上書き。味方側/相手側どちらにも適用可能。
+const TEAM_PROFILES = {
+  'standard': {
+    name: '🧑 標準(全員150cm)',
+    note: '小学6年男子の全国平均相当(均一)',
+    source: '文科省 学校保健統計調査 ベース',
+    heights: { L: 150, C: 150, R: 150, S: 150, LB: 150, RB: 150 },
+  },
+  '2025-Y': {
+    name: '🏆 2025優勝Y型(突出エース型)',
+    note: 'L=165cmエースが攻撃軸 / レンジ24cm / S・LB・RBは141-145cmの俊敏型',
+    source: '第45回全日本バレーボール小学生大会 男子決勝 優勝チーム(匿名化)',
+    heights: { L: 165, C: 157, R: 153, S: 145, LB: 145, RB: 141 },
+  },
+  '2025-N': {
+    name: '🥈 2025準優勝N型(均質バランス型)',
+    note: '149-156cmの均質編成 / レンジ7cm / 突出エース無しの組織型',
+    source: '第45回全日本バレーボール小学生大会 男子決勝 準優勝チーム(匿名化)',
+    heights: { L: 156, C: 152, R: 152, S: 149, LB: 151, RB: 149 },
+  },
+};
+
+// 1パターンの身長を team profile で上書き。side='our'|'opp'
+function applyTeamProfile(idx, profileKey, side) {
+  const profile = TEAM_PROFILES[profileKey];
+  if (!profile) return;
+  const pattern = state.patterns[idx];
+  if (!pattern) return;
+  if (side === 'our') {
+    pattern.ourPlayers.forEach(p => {
+      const h = profile.heights[p.id];
+      if (typeof h === 'number') p.heightCm = h;
+    });
+  } else if (side === 'opp') {
+    // OL←L, OC←C, OR←R, OS←S (相手側はLB/RB無し)
+    const oppMap = { OL: 'L', OC: 'C', OR: 'R', OS: 'S' };
+    pattern.oppPlayers.forEach(p => {
+      const ourKey = oppMap[p.id];
+      if (ourKey && typeof profile.heights[ourKey] === 'number') {
+        p.heightCm = profile.heights[ourKey];
+      }
+    });
+  }
+  saveState();
+  rerenderPatternKeepingFocus(idx);
+}
 function defaultHeightFor(id) {
   return DEFAULT_HEIGHTS_CM[id] ?? STANDARD_HEIGHT_CM;
 }
@@ -1526,6 +1620,25 @@ function renderPattern(pattern, idx) {
     <div class="shot-chips">${chipsHtml}</div>
   `;
   controls.appendChild(shotRow);
+
+  // Team profile row (身長分布の一括適用)
+  const teamRow = document.createElement('div');
+  teamRow.className = 'control-row team-profile-row';
+  const profileOptions = Object.entries(TEAM_PROFILES).map(([key, v]) =>
+    `<option value="${key}">${v.name}</option>`
+  ).join('');
+  teamRow.innerHTML = `
+    <span class="control-label">👥 チーム</span>
+    <select class="team-profile-select" data-action="team-profile">${profileOptions}</select>
+    <button class="small-btn our-btn" data-action="apply-team-our" title="味方の身長に適用">▶味方</button>
+    <button class="small-btn opp-btn" data-action="apply-team-opp" title="相手の身長に適用">▶相手</button>
+  `;
+  controls.appendChild(teamRow);
+  const teamNote = document.createElement('div');
+  teamNote.className = 'team-profile-note';
+  teamNote.dataset.role = 'team-note';
+  teamNote.textContent = TEAM_PROFILES['standard'].note + '\n出典: ' + TEAM_PROFILES['standard'].source;
+  controls.appendChild(teamNote);
 
   // Memo
   const memo = document.createElement('textarea');
@@ -2133,6 +2246,33 @@ function wireCardEvents(card, idx) {
       resetPattern(idx);
     }
   });
+
+  // チームプロファイル: 選択変更でnote更新
+  const teamProfileSelect = card.querySelector('[data-action="team-profile"]');
+  const teamNoteEl = card.querySelector('[data-role="team-note"]');
+  if (teamProfileSelect && teamNoteEl) {
+    teamProfileSelect.addEventListener('change', () => {
+      const p = TEAM_PROFILES[teamProfileSelect.value];
+      if (p) teamNoteEl.textContent = `${p.note}\n出典: ${p.source}`;
+    });
+  }
+  // 味方/相手 適用ボタン
+  const applyOurBtn = card.querySelector('[data-action="apply-team-our"]');
+  if (applyOurBtn) {
+    applyOurBtn.addEventListener('click', () => {
+      const key = teamProfileSelect ? teamProfileSelect.value : 'standard';
+      applyTeamProfile(idx, key, 'our');
+      showToast(`👥 味方の身長を「${TEAM_PROFILES[key].name}」に適用`);
+    });
+  }
+  const applyOppBtn = card.querySelector('[data-action="apply-team-opp"]');
+  if (applyOppBtn) {
+    applyOppBtn.addEventListener('click', () => {
+      const key = teamProfileSelect ? teamProfileSelect.value : 'standard';
+      applyTeamProfile(idx, key, 'opp');
+      showToast(`👥 相手の身長を「${TEAM_PROFILES[key].name}」に適用`);
+    });
+  }
 
   // シミュレーションボタン(パターン7のみ存在)
   const simBtn = card.querySelector('[data-action="simulate"]');

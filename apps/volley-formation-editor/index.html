@@ -2944,11 +2944,9 @@ function speedForType(t, range) {
 }
 
 // 揺れエンベロープ — 初速の高い区間は安定、減速して空気抵抗を受けやすくなる後半でブレ始める
-//   smoothstep を t = startT 〜 1.0 で適用
-//   range='short': 早く減速するので startT が早い
-//   range='long' : 速度が乗っている分、揺れ始めが遅い
+//   straightF (直線→落下の境界) と一致させて、落下開始タイミングで揺れが顕在化
 function wobbleEnvelope(t, range) {
-  const startT = ({ short: 0.30, normal: 0.50, long: 0.65 })[range || 'normal'];
+  const startT = ({ short: 0.40, normal: 0.62, long: 0.80 })[range || 'normal'];
   if (t < startT) return 0;
   const u = Math.min(1, (t - startT) / (1 - startT));
   return u * u * (3 - 2 * u);
@@ -3829,31 +3827,60 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
   const arcMult = ({ short: 1.15, normal: 1.0, long: 0.78 })[range || 'normal'];
   const adjustedArc = arcHeight * arcMult;
 
+  // フローター系の「直線フェーズ→落下フェーズ」の境界 (range毎)
+  //   short: 早く減速 → 早く落ちる(ネット直後付近) / long: 速度が乗ったまま伸びてエンドラインで落下
+  const straightF = ({ short: 0.40, normal: 0.62, long: 0.80 })[range || 'normal'];
+  // 直線フェーズ終端の高さ(開始から微小下降)
+  const FLOATER_END_STRAIGHT_DROP = 0.45; // m
+  const endStraightY = by - FLOATER_END_STRAIGHT_DROP;
+  // フェイント: ブロッカーを越すように下から突き上げ→ふわっと落下
+  // ピーク高さは「開始位置 + apexAboveStart」(チョード基準ではなく絶対基準で押し上げる)
+  const apexAboveStart = Math.max(0.45, adjustedArc * 1.4);  // 既定 ~0.84m上(arcスライダーで微調整可)
+  const FEINT_PEAK_T = 0.30;
+
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
     let x = bx + dx * t;
     let z = bz + dz * t;
-    const chord = by * (1 - t) + targetY * t;
-    // 通常: 中央ピーク放物線 / フェイント: 手元で早期ピーク→失速して落下(伸びない)
-    let bump;
+    let y;
+
     if (type === 'feint') {
-      // 早期頂点(t≈0.18)。立ち上がりはsmoothstep、落下はcosで「ふわっと押し上げ→ホバー→ストン」
-      const peakT = 0.18;
-      const apex = adjustedArc; // adjustedArc(=0.6×arcMult)が押し上げ高さ
-      if (t <= peakT) {
-        const u = t / peakT;
-        bump = apex * (3 * u * u - 2 * u * u * u);
+      // 「ボールを下から突き上げてブロッカーを超す」ように、開始高さからさらに上に上げてから柔らかく落とす
+      const chordAtPeak = by * (1 - FEINT_PEAK_T) + targetY * FEINT_PEAK_T;
+      const apexAbsY = by + apexAboveStart;
+      const requiredBump = apexAbsY - chordAtPeak;
+      const chord = by * (1 - t) + targetY * t;
+      let bumpVal;
+      if (t <= FEINT_PEAK_T) {
+        // 急上昇 (quarter sine: 立ち上がり強く、頂点で減速)
+        const u = t / FEINT_PEAK_T;
+        bumpVal = requiredBump * Math.sin(u * Math.PI / 2);
       } else {
-        const u = (t - peakT) / (1 - peakT);
-        // 落下フェーズ: 最初ゆっくり(滞空)→終盤加速(ストン)
-        bump = apex * Math.cos(u * Math.PI / 2);
+        // ふんわりホバー → 加速して落下 (quarter cosine: 最初ゆっくり、後で加速)
+        const u = (t - FEINT_PEAK_T) / (1 - FEINT_PEAK_T);
+        bumpVal = requiredBump * Math.cos(u * Math.PI / 2);
+      }
+      y = chord + bumpVal;
+    } else if (type === 'floater' || type === 'jumpfloat') {
+      // 速度が乗っている間はほぼ直線(微小下降)、減速してから加速度的に落ちる
+      if (t <= straightF) {
+        const u = t / straightF;
+        // フラット軌道: by → endStraightY を線形(ほぼ水平)
+        y = by + (endStraightY - by) * u;
+      } else {
+        // 落下フェーズ: 残りで target に u^2 で加速して降りる(初期勾配0で滑らかに繋がる)
+        const u = (t - straightF) / (1 - straightF);
+        y = endStraightY + (targetY - endStraightY) * (u * u);
       }
     } else {
-      bump = 4 * t * (1 - t) * adjustedArc;
+      // 通常 (strike/block/loop/underhand/sidearm/jump): chord + 中央ピーク放物線
+      const chord = by * (1 - t) + targetY * t;
+      const bump = 4 * t * (1 - t) * adjustedArc;
+      y = chord + bump;
     }
-    const y = chord + bump;
+
     if (wobbleAmp > 0) {
-      // 揺れは終盤に発生(初速の高い区間は安定、減速で揺れ始める)
+      // 揺れは「直線フェーズ後半～落下フェーズ」で発生 (減速で空気抵抗を受け始める)
       const env = wobbleEnvelope(t, range);
       const wob = Math.sin(t * Math.PI * 6) * wobbleAmp * env;
       x += px * wob;

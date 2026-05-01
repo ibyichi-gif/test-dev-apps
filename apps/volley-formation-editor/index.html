@@ -2875,21 +2875,55 @@ let phantomBall = null;
 let phantomTrail = null;        // 軌跡を残す小球の配列 mesh
 let animState = null;           // { curve, startTime, durationMs, courseIdx } | null
 
-// 球種・サーブ種ごとの飛行速度(m/s) — 小学生全国上位想定 (ベース×1.2)
+// 球種・サーブ種ごとの「初速」(m/s) — 重力で軌道上の速度は変化する
+// 小学生全国上位想定 (前バージョンよりさらに増しで実戦感を再現)
 const COURSE_SPEED_MS = {
   // ディグ系
-  strike:    14,    // 強打
-  block:      7,    // ワンタッチ後 (ブロック減速)
-  loop:       6,    // ループ
-  feint:      5,    // フェイント
+  strike:    18,    // 強打 (上位エース 16-20m/s)
+  block:      8,    // ワンタッチ後 (ブロック減速)
+  loop:       9,    // ループ初速 (重力で減速し低速で滞空)
+  feint:      7,    // フェイント
   // レセプション系 (サーブ)
-  underhand:  9,    // base 7
-  sidearm:   11,    // base 9
-  floater:   13,    // base 10
-  jumpfloat: 16,    // base 13
-  jump:      18,    // base 15
+  underhand: 11,    // 高い山なり、初速控えめだが落下で加速
+  sidearm:   13,
+  floater:   15,
+  jumpfloat: 18,
+  jump:      22,    // エース級
 };
 function speedForType(t) { return COURSE_SPEED_MS[t] || 10; }
+
+// ====== 弾道時刻マップ (energy conservation) ======
+// curve(0..1) を初速 v0 で進む時の「経過時間→曲線パラメータ t」変換テーブルを構築。
+// 上昇中: ½v² + gy 一定 から速度が低下 → 滞空時間長い
+// 降下中: 速度が増加 → 着地直前は速い
+const G_M_S2 = 9.81;
+function buildBallisticTimeMap(curve, v0, samples = 96) {
+  const pts = [];
+  for (let i = 0; i <= samples; i++) pts.push(curve.getPoint(i / samples));
+  const y0 = pts[0].y;
+  // 各点での速度 (1/2 v² + g y = const より v² = v0² + 2g(y0 - y))
+  const speeds = pts.map(p => Math.sqrt(Math.max(0.25, v0 * v0 + 2 * G_M_S2 * (y0 - p.y))));
+  const cumTimes = [0];
+  for (let i = 1; i <= samples; i++) {
+    const d = pts[i].distanceTo(pts[i-1]);
+    const v = (speeds[i] + speeds[i-1]) / 2;
+    cumTimes.push(cumTimes[i-1] + d / Math.max(0.5, v));
+  }
+  return { cumTimes, samples, totalTime: cumTimes[samples] };
+}
+function timeToParam(timeMap, t) {
+  if (t <= 0) return 0;
+  if (t >= timeMap.totalTime) return 1;
+  const { cumTimes, samples } = timeMap;
+  let lo = 0, hi = samples;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (cumTimes[mid] <= t) lo = mid;
+    else hi = mid;
+  }
+  const segFrac = (t - cumTimes[lo]) / (cumTimes[lo+1] - cumTimes[lo]);
+  return (lo + segFrac) / samples;
+}
 
 // World scale (小学生バレー): court 16m × 8m, net 2.00m, attack line 2.7m
 // 1 SVG unit ≈ 8/280 m ≈ 0.0286 m
@@ -4015,43 +4049,51 @@ function playSelectedCourse() {
   if (!co || !co.animCurve) return;
   const curve = co.animCurve;
   const length = curve.getLength();
-  const speed = speedForType(co.type);
-  const durationMs = Math.max(150, (length / speed) * 1000);
+  const v0 = speedForType(co.type);
+  const timeMap = buildBallisticTimeMap(curve, v0);
+  // 着地時の速度(参考表示用) — energy conservation
+  const pStart = curve.getPoint(0);
+  const pEnd = curve.getPoint(1);
+  const vEnd = Math.sqrt(Math.max(0.5, v0 * v0 + 2 * G_M_S2 * (pStart.y - pEnd.y)));
 
   ensurePhantomBall();
   if (!phantomBall.parent) scene.add(phantomBall);
   phantomBall.visible = true;
-  // 色を球種に合わせる
   phantomBall.material.emissive.setHex(co.colorHex || 0xff8a3a);
 
   animState = {
     curve,
+    timeMap,
     startTime: performance.now(),
-    durationMs,
     courseIdx: idx,
-    speed,
+    v0,
+    vEnd,
     distance: length,
   };
-  // 再生ボタン下の速度表示を更新
+  // 再生ボタン下の速度表示を更新 (初速→着地速度・所要時間・距離)
   const speedValEl = document.getElementById('playSpeedVal');
   if (speedValEl) {
-    speedValEl.textContent = `${speed.toFixed(0)}m/s · ${(durationMs/1000).toFixed(2)}s · ${length.toFixed(1)}m`;
+    speedValEl.textContent = `初速${v0.toFixed(0)}→着地${vEnd.toFixed(0)}m/s · ${timeMap.totalTime.toFixed(2)}s · ${length.toFixed(1)}m`;
   }
 }
 
 function tickPhantomBall() {
   if (!animState || !phantomBall) return;
-  const elapsed = performance.now() - animState.startTime;
-  const t = Math.min(1, elapsed / animState.durationMs);
-  const point = animState.curve.getPoint(t);
-  phantomBall.position.copy(point);
-  if (t >= 1) {
-    // 終了 — 0.6秒後にフェードアウト
+  const elapsedMs = performance.now() - animState.startTime;
+  const elapsedSec = elapsedMs / 1000;
+  const total = animState.timeMap.totalTime;
+  if (elapsedSec >= total) {
+    // 着地 — 終端に置いて0.6秒後にフェード
+    phantomBall.position.copy(animState.curve.getPoint(1));
     setTimeout(() => {
       if (phantomBall) phantomBall.visible = false;
     }, 600);
     animState = null;
+    return;
   }
+  const t = timeToParam(animState.timeMap, elapsedSec);
+  const point = animState.curve.getPoint(t);
+  phantomBall.position.copy(point);
 }
 
 // ---------- 3D COURSE TARGET HANDLE ----------

@@ -287,6 +287,51 @@
   .icon-btn:hover { color: var(--accent-our); border-color: var(--accent-our); }
   .icon-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
 
+  /* ============= SCENE TABS (最上位: ディグ/レセプション切替) ============= */
+  .scene-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 10px 0;
+    background: rgba(0,0,0,0.25);
+    border-bottom: 1px solid var(--line);
+  }
+  .scene-tab {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--text-dim);
+    padding: 7px 6px;
+    font-family: "Noto Sans JP", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    border-radius: 4px 4px 0 0;
+    transition: all 0.15s ease;
+  }
+  .scene-tab:hover { color: var(--text-main); }
+  .scene-tab.active.dig {
+    background: var(--accent-our);
+    color: var(--bg-deep);
+    border-color: var(--accent-our);
+  }
+  .scene-tab.active.reception {
+    background: #5dcaa5;
+    color: var(--bg-deep);
+    border-color: #5dcaa5;
+  }
+  .scene-tab .scene-sub {
+    display: block;
+    font-size: 9px;
+    font-weight: 400;
+    opacity: 0.7;
+    margin-top: 1px;
+    letter-spacing: 0.05em;
+  }
+
+  /* シーン別アクセント色 (パネル全体のヒント) */
+  .pattern-card.scene-reception .court-bg-opp { fill: rgba(93, 202, 165, 0.04); }
+
   /* ============= MODE TABS ============= */
   .mode-tabs {
     display: flex;
@@ -610,6 +655,18 @@
   .course-arrow-block  { fill: var(--shot-block); }
   .course-arrow-loop   { fill: var(--shot-loop); }
   .course-arrow-feint  { fill: var(--shot-feint); }
+  /* サーブ系 */
+  .course-strike, .course-block, .course-loop, .course-feint {}
+  .course-underhand { stroke: #9bd47b; }
+  .course-sidearm   { stroke: #5dcaa5; }
+  .course-floater   { stroke: #ffd84d; stroke-dasharray: 6 4; }
+  .course-jumpfloat { stroke: #ff9500; stroke-dasharray: 8 3; }
+  .course-jump      { stroke: #ff5f4a; }
+  .course-arrow-underhand { fill: #9bd47b; }
+  .course-arrow-sidearm   { fill: #5dcaa5; }
+  .course-arrow-floater   { fill: #ffd84d; }
+  .course-arrow-jumpfloat { fill: #ff9500; }
+  .course-arrow-jump      { fill: #ff5f4a; }
 
   .fan-strike { fill: var(--shot-strike); fill-opacity: 0.18; }
   .fan-block  { fill: var(--shot-block);  fill-opacity: 0.15; }
@@ -1244,109 +1301,122 @@ function defaultOppPlayers() {
   ];
 }
 function defaultBall() {
-  // Hidden by default; user activates by drag-from-icon or by clicking "ボール配置"
-  // h = ball height in meters (used in 3D view)
-  // Default position: just above net on opp setter zone
+  // ディグ用デフォ: 相手setter上空 (スパイク開始点)
   return { x: 240, y: 350, visible: false, h: 2.5 };
+}
+function defaultServeBall() {
+  // レセプション用デフォ: 相手エンドライン後方(サーブ開始点)、低めの高さ
+  return { x: 240, y: 80, visible: true, h: 1.5 };
+}
+function defaultBallForScene(scene) {
+  return scene === 'reception' ? defaultServeBall() : defaultBall();
+}
+
+// シーン切替時のpattern書き換え。courses は型不整合のためリセット。
+// 選手位置・身長・ポーズ・チームプロファイル(身長)・メモは保持。
+function switchPatternScene(idx, newScene) {
+  const pattern = state.patterns[idx];
+  if (!pattern || pattern.scene === newScene) return;
+  pattern.scene = newScene;
+  pattern.courses = []; // 型不整合のためクリア
+  pattern.ball = defaultBallForScene(newScene);
+  // プリセットを新シーンの有効範囲に
+  const validKeys = presetsForScene(newScene).map(([k]) => k);
+  if (!validKeys.includes(pattern.preset)) {
+    pattern.preset = DEFAULT_PRESET_BY_SCENE[newScene];
+  }
+  if (newScene === 'reception') {
+    pattern.currentServeType = pattern.currentServeType || 'underhand';
+  } else {
+    pattern.currentShotType = pattern.currentShotType || 'strike';
+  }
+  saveState();
+  rerenderPatternKeepingFocus(idx);
+  showToast(`シーン切替:${newScene === 'dig' ? '🛡 ディグ' : '📥 レセプション'}(コースはリセット)`);
 }
 
 // Default arc height (meters) per shot type — used in 3D view as initial value
 // blockは「ブロックに当たった後の跳ね方」: 大きい→上に跳ね上がり奥に飛ぶ / 小さい→手の横に当たってサイドに落ちる
 const DEFAULT_ARC = {
+  // ディグ用(スパイク)
   strike: 0.0,   // ほぼ直線
   block:  1.2,   // ブロック跳ね上がり (山なりで奥へ)
   loop:   1.5,   // 高く山なり
   feint:  0.6,   // フワッと落ちる
+  // レセプション用(サーブ)
+  underhand: 1.5, // アンダーサーブ: 高い山なり、遅い
+  sidearm:   0.9, // サイドハンド: 中速
+  floater:   0.5, // フローター: 低めで揺れる
+  jumpfloat: 0.3, // ジャンプフロート: ほぼ直線で速い
+  jump:      0.2, // ジャンプサーブ: 直線・最速
 };
+
+// サーブ種別の詳細 (色・揺れ・カテゴリ)
+const SERVE_TYPES = {
+  underhand: { name: 'アンダー',          short: 'U',  color: 0x9bd47b, wobble: 0,    note: '入門・低い軌道、遅い' },
+  sidearm:   { name: 'サイドハンド',       short: 'SH', color: 0x5dcaa5, wobble: 0,    note: '中級・中速で安定' },
+  floater:   { name: 'フローター',         short: 'F',  color: 0xffd84d, wobble: 0.18, note: '無回転で揺れる' },
+  jumpfloat: { name: 'ジャンプフロート',   short: 'JF', color: 0xff9500, wobble: 0.10, note: 'ジャンプして無回転、速い' },
+  jump:      { name: 'ジャンプサーブ',     short: 'JS', color: 0xff5f4a, wobble: 0,    note: '上級・スパイク並みの速度' },
+};
+
+// 球種(ディグ用): 既存4種を ALL_TYPES に統合できるよう name 整備
+const SHOT_TYPES_INFO = {
+  strike: { name: '強打',       short: 'S',  color: 0xff5f4a },
+  block:  { name: 'ワンタッチ', short: 'B',  color: 0xffd84d },
+  loop:   { name: 'ループ',     short: 'L',  color: 0xb876ff },
+  feint:  { name: 'フェイント', short: 'F',  color: 0x58d3ff },
+};
+
+// 与えられたコースタイプがレセプション(サーブ系)か判定
+function isServeType(t) { return SERVE_TYPES[t] !== undefined; }
 
 // ---------- PRESETS (小学生バレー 11陣形 / VOLLEY_IQ v3.0 準拠) ----------
 function buildPlayers(coords) {
   return coords.map(([id, sx, sy]) => makePlayer(id, sx, sy));
 }
 const PRESETS = {
-  'w-type': {
-    name: '🅰️ W型レセプション',
-    players: buildPlayers([
-      ['L',18,70],['C',50,72],['R',82,70],
-      ['S',70,58],['LB',30,85],['RB',70,85],
-    ]),
-  },
-  'reverse-w': {
-    name: '🅱️ 逆W型レセプション',
-    players: buildPlayers([
-      ['L',30,72],['R',70,72],['S',70,58],
-      ['LB',18,85],['C',50,85],['RB',82,85],
-    ]),
-  },
-  'dig-L-tallS': {
-    name: 'Ⓒ-1 Dig:相手L打ち(S背高)',
-    players: buildPlayers([
-      ['L',15,55],['S',32,55],['R',78,65],
-      ['LB',20,82],['C',50,82],['RB',80,82],
-    ]),
-  },
-  'dig-L-tallC': {
-    name: 'Ⓒ-2 Dig:相手L打ち(C背高)',
-    players: buildPlayers([
-      ['L',15,55],['C',32,55],['R',78,65],
-      ['LB',20,82],['RB',55,82],['S',80,82],
-    ]),
-  },
-  'dig-R-tallS': {
-    name: 'Ⓒ-3 Dig:相手R打ち(S背高)',
-    players: buildPlayers([
-      ['L',22,65],['S',68,55],['R',85,55],
-      ['LB',20,82],['C',50,82],['RB',80,82],
-    ]),
-  },
-  'dig-R-tallC': {
-    name: 'Ⓒ-4 Dig:相手R打ち(C背高)',
-    players: buildPlayers([
-      ['L',22,65],['C',68,55],['R',85,55],
-      ['LB',20,82],['RB',55,82],['S',80,82],
-    ]),
-  },
-  'dig-C-tallS': {
-    name: 'Ⓒ-5 Dig:相手Cクイック(S背高)',
-    players: buildPlayers([
-      ['S',50,55],['L',18,65],['R',82,65],
-      ['LB',20,82],['C',50,82],['RB',80,82],
-    ]),
-  },
-  'dig-C-tallC': {
-    name: 'Ⓒ-6 Dig:相手Cクイック(C背高)',
-    players: buildPlayers([
-      ['C',50,55],['L',18,65],['R',82,65],
-      ['LB',20,82],['RB',55,82],['S',80,82],
-    ]),
-  },
-  'attack-lr': {
-    name: 'Ⓓ 攻撃:LRのみ',
-    players: buildPlayers([
-      ['L',12,72],['C',50,73],['R',88,72],
-      ['S',70,58],['LB',25,85],['RB',75,85],
-    ]),
-  },
-  'attack-lrc': {
-    name: 'Ⓔ 攻撃:LRC全員',
-    players: buildPlayers([
-      ['L',12,72],['C',50,65],['R',88,72],
-      ['S',70,58],['LB',30,87],['RB',70,87],
-    ]),
-  },
-  'neutral': {
-    name: '⚖️ 中立',
-    players: buildPlayers([
-      ['L',18,70],['C',50,72],['R',82,70],
-      ['S',70,58],['LB',30,85],['RB',70,85],
-    ]),
-  },
+  'w-type':       { cat: 'reception', name: '🅰️ W型レセプション',
+    players: buildPlayers([['L',18,70],['C',50,72],['R',82,70],['S',70,58],['LB',30,85],['RB',70,85]]) },
+  'reverse-w':    { cat: 'reception', name: '🅱️ 逆W型レセプション',
+    players: buildPlayers([['L',30,72],['R',70,72],['S',70,58],['LB',18,85],['C',50,85],['RB',82,85]]) },
+  'dig-L-tallS':  { cat: 'dig', name: 'Ⓒ-1 Dig:相手L打ち(S背高)',
+    players: buildPlayers([['L',15,55],['S',32,55],['R',78,65],['LB',20,82],['C',50,82],['RB',80,82]]) },
+  'dig-L-tallC':  { cat: 'dig', name: 'Ⓒ-2 Dig:相手L打ち(C背高)',
+    players: buildPlayers([['L',15,55],['C',32,55],['R',78,65],['LB',20,82],['RB',55,82],['S',80,82]]) },
+  'dig-R-tallS':  { cat: 'dig', name: 'Ⓒ-3 Dig:相手R打ち(S背高)',
+    players: buildPlayers([['L',22,65],['S',68,55],['R',85,55],['LB',20,82],['C',50,82],['RB',80,82]]) },
+  'dig-R-tallC':  { cat: 'dig', name: 'Ⓒ-4 Dig:相手R打ち(C背高)',
+    players: buildPlayers([['L',22,65],['C',68,55],['R',85,55],['LB',20,82],['RB',55,82],['S',80,82]]) },
+  'dig-C-tallS':  { cat: 'dig', name: 'Ⓒ-5 Dig:相手Cクイック(S背高)',
+    players: buildPlayers([['S',50,55],['L',18,65],['R',82,65],['LB',20,82],['C',50,82],['RB',80,82]]) },
+  'dig-C-tallC':  { cat: 'dig', name: 'Ⓒ-6 Dig:相手Cクイック(C背高)',
+    players: buildPlayers([['C',50,55],['L',18,65],['R',82,65],['LB',20,82],['RB',55,82],['S',80,82]]) },
+  'attack-lr':    { cat: 'attack', name: 'Ⓓ 攻撃:LRのみ',
+    players: buildPlayers([['L',12,72],['C',50,73],['R',88,72],['S',70,58],['LB',25,85],['RB',75,85]]) },
+  'attack-lrc':   { cat: 'attack', name: 'Ⓔ 攻撃:LRC全員',
+    players: buildPlayers([['L',12,72],['C',50,65],['R',88,72],['S',70,58],['LB',30,87],['RB',70,87]]) },
+  'neutral':      { cat: 'both', name: '⚖️ 中立',
+    players: buildPlayers([['L',18,70],['C',50,72],['R',82,70],['S',70,58],['LB',30,85],['RB',70,85]]) },
 };
+
+// シーン別: 利用可能なプリセットキー
+function presetsForScene(scene) {
+  return Object.entries(PRESETS).filter(([_, v]) => {
+    if (v.cat === 'both') return true;
+    if (scene === 'dig')        return v.cat === 'dig' || v.cat === 'attack';
+    if (scene === 'reception')  return v.cat === 'reception';
+    return false;
+  });
+}
+// 各シーンのデフォルトプリセット
+const DEFAULT_PRESET_BY_SCENE = { dig: 'dig-L-tallS', reception: 'w-type' };
 
 // ---------- STATE ----------
 // 旧データ(P1-P6)と互換性なし → キーをbumpして強制リセット
 // _es: 6役割モデル / _es2: コート縦横比 1:2 / _es3: 相手OL/OC/OR/OS / _es4: 7パターン化(自動シミュ)
-const STORAGE_KEY = 'volley_formation_board_v4_es4';
+//   / _es5: シーン分離(ディグ/レセプション)
+const STORAGE_KEY = 'volley_formation_board_v4_es5';
 const SIM_PATTERN_IDX = 6; // パターン7(0-indexed)
 
 function makeDefaultState() {
@@ -1358,10 +1428,14 @@ function makeDefaultState() {
     memo: '',
     preset: 'w-type',
     ball: defaultBall(),
-    courses: [],   // { x2,y2, type:'strike'|'block'|'loop'|'feint' }
+    courses: [],   // { x2,y2, type:'strike'|'block'|'loop'|'feint'|'underhand'|'sidearm'|'floater'|'jumpfloat'|'jump' }
     mode: 'place', // 'place' | 'course'
     halfAngle: 15, // degrees, ± from course line
-    currentShotType: 'strike', // selected shot type for new courses
+    // シーン分離(_es5以降)
+    scene: 'dig',                      // 'dig' | 'reception'
+    currentShotType: 'strike',         // ディグ時の球種
+    currentServeType: 'underhand',     // レセプション時のサーブ種
+    receiverTargetId: 'S',             // パス先(レセプション時のターゲットセッター)
   }));
   patterns.push(makeSimDefaultPattern());
   return { activePattern: 0, patterns };
@@ -1431,6 +1505,10 @@ function loadState() {
       if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
       if (!p.mode) p.mode = 'place';
       if (!p.currentShotType) p.currentShotType = 'strike';
+      // シーン分離(_es5)
+      if (!p.scene) p.scene = 'dig';
+      if (!p.currentServeType) p.currentServeType = 'underhand';
+      if (!p.receiverTargetId) p.receiverTargetId = 'S';
       // Backfill heightCm / isBlocker / isSpiker for existing players
       (p.ourPlayers || []).forEach(pl => {
         if (typeof pl.heightCm !== 'number') pl.heightCm = defaultHeightFor(pl.id);
@@ -1504,6 +1582,7 @@ function renderAll() {
 function renderPattern(pattern, idx) {
   const card = document.createElement('div');
   card.className = 'pattern-card';
+  card.classList.add(pattern.scene === 'reception' ? 'scene-reception' : 'scene-dig');
   card.dataset.idx = idx;
 
   // Header
@@ -1520,12 +1599,26 @@ function renderPattern(pattern, idx) {
   `;
   card.appendChild(head);
 
+  // Scene tabs (最上位: ディグ / レセプション切替)
+  const sceneTabs = document.createElement('div');
+  sceneTabs.className = 'scene-tabs';
+  const isDig = pattern.scene !== 'reception';
+  sceneTabs.innerHTML = `
+    <button class="scene-tab dig ${isDig ? 'active' : ''}" data-scene="dig">
+      🛡 ディグ <span class="scene-sub">スパイクレシーブ</span>
+    </button>
+    <button class="scene-tab reception ${!isDig ? 'active' : ''}" data-scene="reception">
+      📥 レセプション <span class="scene-sub">サーブレシーブ</span>
+    </button>
+  `;
+  card.appendChild(sceneTabs);
+
   // Mode tabs
   const tabs = document.createElement('div');
   tabs.className = 'mode-tabs';
   tabs.innerHTML = `
     <button class="mode-tab ${pattern.mode==='place'?'active':''}" data-mode="place">▶ 配置</button>
-    <button class="mode-tab ${pattern.mode==='course'?'active':''}" data-mode="course">→ コース</button>
+    <button class="mode-tab ${pattern.mode==='course'?'active':''}" data-mode="course">→ ${isDig ? 'コース(球種)' : 'サーブ軌道'}</button>
   `;
   card.appendChild(tabs);
 
@@ -1563,10 +1656,10 @@ function renderPattern(pattern, idx) {
     controls.appendChild(simNotes);
   }
 
-  // Preset row
+  // Preset row (シーンでフィルタ)
   const presetRow = document.createElement('div');
   presetRow.className = 'control-row';
-  const presetOptions = Object.entries(PRESETS).map(([key, v]) =>
+  const presetOptions = presetsForScene(pattern.scene).map(([key, v]) =>
     `<option value="${key}" ${pattern.preset === key ? 'selected' : ''}>${v.name}</option>`
   ).join('');
   presetRow.innerHTML = `
@@ -1575,50 +1668,82 @@ function renderPattern(pattern, idx) {
   `;
   controls.appendChild(presetRow);
 
-  // Attacker row
+  // Attacker / Receiver target row (シーン別ラベル)
   const attackerRow = document.createElement('div');
   attackerRow.className = 'control-row';
-  const attackerOptions = pattern.ourPlayers.map(p =>
-    `<option value="${p.id}" ${pattern.attackerId === p.id ? 'selected' : ''}>${p.label}</option>`
-  ).join('');
-  attackerRow.innerHTML = `
-    <span class="control-label">アタッカー</span>
-    <select class="attacker-select" data-action="attacker">${attackerOptions}</select>
-  `;
+  if (pattern.scene === 'reception') {
+    // レセプション時はパス先(セッター)選択
+    const targetOptions = pattern.ourPlayers.map(p =>
+      `<option value="${p.id}" ${pattern.receiverTargetId === p.id ? 'selected' : ''}>${p.label}</option>`
+    ).join('');
+    attackerRow.innerHTML = `
+      <span class="control-label">パス先</span>
+      <select class="attacker-select" data-action="receiver-target">${targetOptions}</select>
+    `;
+  } else {
+    const attackerOptions = pattern.ourPlayers.map(p =>
+      `<option value="${p.id}" ${pattern.attackerId === p.id ? 'selected' : ''}>${p.label}</option>`
+    ).join('');
+    attackerRow.innerHTML = `
+      <span class="control-label">アタッカー</span>
+      <select class="attacker-select" data-action="attacker">${attackerOptions}</select>
+    `;
+  }
   controls.appendChild(attackerRow);
 
-  // Ball/course row
+  // Ball/course row (シーン別ラベル: ボール/サーブ位置)
   const ballRow = document.createElement('div');
   ballRow.className = 'control-row';
+  const ballLabel = pattern.scene === 'reception' ? 'サーブ位置' : 'ボール';
   ballRow.innerHTML = `
-    <span class="control-label">ボール</span>
+    <span class="control-label">${ballLabel}</span>
     <button class="small-btn" data-action="toggle-ball">${pattern.ball.visible ? '非表示' : '配置'}</button>
     <span class="control-label" style="margin-left:6px">高さ</span>
-    <input class="num-input" type="number" min="0" max="3.5" step="0.1" value="${pattern.ball.h?.toFixed(1) ?? '2.5'}" data-action="ball-height" title="3D表示時のボールの高さ(m)">
+    <input class="num-input" type="number" min="0" max="3.5" step="0.1" value="${pattern.ball.h?.toFixed(1) ?? '2.5'}" data-action="ball-height" title="3D表示時のボール/サーブの高さ(m)">
     <span class="control-label" style="margin-left:6px">範囲±°</span>
     <input class="num-input" type="number" min="0" max="60" step="1" value="${pattern.halfAngle}" data-action="half-angle">
     <button class="small-btn danger" data-action="clear-courses" title="コースを全削除">コース消去</button>
   `;
   controls.appendChild(ballRow);
 
-  // Shot type chips (only meaningful in course mode, but always shown for visibility)
-  const shotTypes = [
-    { key: 'strike', label: '強打' },
-    { key: 'block',  label: 'ワンタッチ' },
-    { key: 'loop',   label: 'ループ' },
-    { key: 'feint',  label: 'フェイント' },
-  ];
+  // Shot/Serve type chips (シーン別)
   const shotRow = document.createElement('div');
   shotRow.className = 'control-row';
-  const chipsHtml = shotTypes.map(s =>
-    `<button class="shot-chip ${s.key} ${pattern.currentShotType === s.key ? 'active' : ''}" data-action="shot-type" data-shot="${s.key}">
-      <span class="swatch"></span>${s.label}
-    </button>`
-  ).join('');
-  shotRow.innerHTML = `
-    <span class="control-label">球種</span>
-    <div class="shot-chips">${chipsHtml}</div>
-  `;
+  if (pattern.scene === 'reception') {
+    // サーブ種チップ
+    const serveTypes = [
+      { key: 'underhand', label: 'アンダー' },
+      { key: 'sidearm',   label: 'サイド' },
+      { key: 'floater',   label: 'フロート' },
+      { key: 'jumpfloat', label: 'JF' },
+      { key: 'jump',      label: 'ジャンプ' },
+    ];
+    const chipsHtml = serveTypes.map(s =>
+      `<button class="shot-chip serve-${s.key} ${pattern.currentServeType === s.key ? 'active' : ''}" data-action="serve-type" data-serve="${s.key}">
+        <span class="swatch" style="background:#${SERVE_TYPES[s.key].color.toString(16).padStart(6,'0')}"></span>${s.label}
+      </button>`
+    ).join('');
+    shotRow.innerHTML = `
+      <span class="control-label">サーブ種</span>
+      <div class="shot-chips">${chipsHtml}</div>
+    `;
+  } else {
+    const shotTypes = [
+      { key: 'strike', label: '強打' },
+      { key: 'block',  label: 'ワンタッチ' },
+      { key: 'loop',   label: 'ループ' },
+      { key: 'feint',  label: 'フェイント' },
+    ];
+    const chipsHtml = shotTypes.map(s =>
+      `<button class="shot-chip ${s.key} ${pattern.currentShotType === s.key ? 'active' : ''}" data-action="shot-type" data-shot="${s.key}">
+        <span class="swatch"></span>${s.label}
+      </button>`
+    ).join('');
+    shotRow.innerHTML = `
+      <span class="control-label">球種</span>
+      <div class="shot-chips">${chipsHtml}</div>
+    `;
+  }
   controls.appendChild(shotRow);
 
   // Team profile row (身長分布の一括適用)
@@ -2210,12 +2335,15 @@ function setupCourseModeHandlers(svg, idx) {
       return;
     }
 
-    // Add course
+    // Add course (シーン別: ディグ=球種 / レセプション=サーブ種)
+    const courseType = (pattern.scene === 'reception')
+      ? (pattern.currentServeType || 'underhand')
+      : (pattern.currentShotType || 'strike');
     pattern.courses.push({
       x2: drawData.x2,
       y2: drawData.y2,
-      type: pattern.currentShotType || 'strike',
-      arcHeight: DEFAULT_ARC[pattern.currentShotType] ?? 0,
+      type: courseType,
+      arcHeight: DEFAULT_ARC[courseType] ?? 0,
     });
     drawData = null;
     saveState();
@@ -2368,7 +2496,6 @@ function wireCardEvents(card, idx) {
   card.querySelectorAll('[data-action="shot-type"]').forEach(btn => {
     btn.addEventListener('click', () => {
       state.patterns[idx].currentShotType = btn.dataset.shot;
-      // If user is in place mode, switch to course mode automatically
       if (state.patterns[idx].mode !== 'course') {
         state.patterns[idx].mode = 'course';
       }
@@ -2376,6 +2503,32 @@ function wireCardEvents(card, idx) {
       rerenderPatternKeepingFocus(idx);
     });
   });
+  // サーブ種チップ(レセプション時のみ表示される)
+  card.querySelectorAll('[data-action="serve-type"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.patterns[idx].currentServeType = btn.dataset.serve;
+      if (state.patterns[idx].mode !== 'course') {
+        state.patterns[idx].mode = 'course';
+      }
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+    });
+  });
+  // シーンタブ: ディグ <-> レセプション
+  card.querySelectorAll('[data-scene]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      switchPatternScene(idx, btn.dataset.scene);
+    });
+  });
+  // パス先(レセプション時)
+  const recvTargetSel = card.querySelector('[data-action="receiver-target"]');
+  if (recvTargetSel) {
+    recvTargetSel.addEventListener('change', (e) => {
+      state.patterns[idx].receiverTargetId = e.target.value;
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+    });
+  }
 
   // Open 3D view
   card.querySelector('[data-action="open-3d"]').addEventListener('click', () => {
@@ -3427,12 +3580,15 @@ function buildBlockTrajectory(scene, bx, by, bz, tx, tz, blocker, arcHeight, hal
 function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, courseIdx) {
   // Target lands on the court (y=0)
   const targetY = 0.05;
-  const colorHex = {
-    strike: 0xff5f4a,
-    block:  0xffd84d,
-    loop:   0xb876ff,
-    feint:  0x58d3ff,
-  }[type] || 0xff5f4a;
+  // サーブ系 / 球種 で色を決定
+  let colorHex;
+  if (SERVE_TYPES[type]) {
+    colorHex = SERVE_TYPES[type].color;
+  } else {
+    colorHex = ({
+      strike: 0xff5f4a, block: 0xffd84d, loop: 0xb876ff, feint: 0x58d3ff,
+    }[type]) || 0xff5f4a;
+  }
 
   // ====== BLOCK type: 2-phase trajectory (ball -> blocker hand -> target) ======
   // ターゲットがブロッカー側(z<0=opp side or 反対側)なら「上に跳ね上がり奥に飛ぶ」
@@ -3459,23 +3615,34 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
   const horizDist = Math.sqrt(dx*dx + dz*dz);
 
   // Build trajectory points
-  const segments = 32;
+  const segments = 36;
   const points = [];
 
-  // Perpendicular in XZ plane
+  // Perpendicular in XZ plane (for wobble)
   let px = 0, pz = 0;
   if (horizDist > 0.001) {
     const ux = dx / horizDist, uz = dz / horizDist;
     px = -uz; pz = ux;
   }
 
+  // フローター系のラテラル揺れ
+  const serveInfo = SERVE_TYPES[type];
+  const wobbleAmp = serveInfo ? serveInfo.wobble : 0;
+
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
-    const x = bx + dx * t;
-    const z = bz + dz * t;
+    let x = bx + dx * t;
+    let z = bz + dz * t;
     const chord = by * (1 - t) + targetY * t;
     const bump = 4 * t * (1 - t) * arcHeight;
-    points.push(new THREE.Vector3(x, chord + bump, z));
+    const y = chord + bump;
+    if (wobbleAmp > 0) {
+      // 軌道の中盤で揺れが大きく、後半は減衰
+      const wob = Math.sin(t * Math.PI * 5) * wobbleAmp * (1 - 0.4 * t);
+      x += px * wob;
+      z += pz * wob;
+    }
+    points.push(new THREE.Vector3(x, y, z));
   }
 
   // Build tube geometry along curve for visibility
@@ -3513,10 +3680,12 @@ function addCourse3D(scene, bx, by, bz, tx, tz, type, halfAngleDeg, arcHeight, c
   courseObjects.push({ tube, tubeGeo, ring, ringMat, fan, badge, courseIdx, colorHex, type });
 }
 
-// Small color-coded badge sprite shown at landing point: "#1 強打"
+// Small color-coded badge sprite shown at landing point: "#1 強打" / "#1 アンダー"
 function makeCourseBadge(num, type, colorHex) {
-  const labels = { strike: '強打', block: 'ワンタッチ', loop: 'ループ', feint: 'フェイント' };
-  const text = `#${num} ${labels[type] || ''}`;
+  const shotLabels = { strike: '強打', block: 'ワンタッチ', loop: 'ループ', feint: 'フェイント' };
+  const serveLabel = SERVE_TYPES[type] ? SERVE_TYPES[type].name : null;
+  const labelTxt = serveLabel || shotLabels[type] || '';
+  const text = `#${num} ${labelTxt}`;
   const canvas = document.createElement('canvas');
   canvas.width = 192; canvas.height = 56;
   const ctx = canvas.getContext('2d');

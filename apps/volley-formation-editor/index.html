@@ -788,6 +788,36 @@
   }
   .modal p { color: var(--text-dim); font-size: 12px; margin-bottom: 12px; line-height: 1.6; }
 
+  /* Help modal content */
+  .help-modal { max-width: 640px; }
+  .help-body h3 {
+    font-family: "Noto Sans JP", sans-serif;
+    font-size: 13px;
+    color: var(--accent-our);
+    margin: 14px 0 6px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 4px;
+  }
+  .help-body h3:first-child { margin-top: 0; }
+  .help-body ul {
+    list-style: none;
+    padding-left: 4px;
+  }
+  .help-body li {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    padding-left: 14px;
+    position: relative;
+  }
+  .help-body li::before {
+    content: "·";
+    position: absolute;
+    left: 2px;
+    color: var(--accent-our);
+  }
+  .help-body b { color: var(--text-main); font-weight: 600; }
+
   /* ============= STATUS ============= */
   .status-toast {
     position: fixed;
@@ -1097,6 +1127,8 @@
     <span class="sub">v4 · 小学生バレー · 16×8m · 6役割(L/C/R/S/LB/RB)</span>
   </div>
   <div class="topbar-actions">
+    <button class="btn" id="btnUndo" title="直前の操作を取り消す (Ctrl+Z)" disabled>↩ 元に戻す</button>
+    <button class="btn" id="btnHelp" title="操作方法を表示">❓ 使い方</button>
     <button class="btn" id="btnExport">エクスポート</button>
     <button class="btn" id="btnImport">インポート</button>
     <button class="btn danger" id="btnResetAll">全リセット</button>
@@ -1112,7 +1144,7 @@
   <div class="legend-item"><span class="legend-dot" style="background:var(--shot-block)"></span><span>ワンタッチ</span></div>
   <div class="legend-item"><span class="legend-dot" style="background:var(--shot-loop)"></span><span>ループ</span></div>
   <div class="legend-item"><span class="legend-dot" style="background:var(--shot-feint)"></span><span>フェイント</span></div>
-  <div class="legend-hint">役割: L/C/R/S/LB/RB · ローテなし · ネット2.00m · アタックライン2.7m · 配置:ドラッグ / コース:球種選択→線描画 / 3D:[3D]ボタン</div>
+  <div class="legend-hint">役割: L/C/R/S/LB/RB · ローテなし · ネット2.00m · アタックライン2.7m · 配置:ドラッグ / コース:球種選択→線描画 / 3D:[3D]ボタン / ↩ Ctrl+Z:元に戻す</div>
 </div>
 
 <nav class="pattern-tabs" id="patternTabs" role="tablist" aria-label="パターン切替"></nav>
@@ -1125,8 +1157,56 @@
     <p id="modalDesc">下のテキストをコピーして保存してください。</p>
     <textarea id="modalTextarea" spellcheck="false"></textarea>
     <div class="modal-actions">
+      <input type="file" id="modalFileInput" accept=".json,application/json" style="display:none">
+      <button class="btn" id="modalFileBtn" style="display:none">📂 ファイルを選ぶ</button>
+      <button class="btn" id="modalDownload" style="display:none">💾 ファイルに保存</button>
+      <button class="btn" id="modalCopy" style="display:none">📋 コピー</button>
+      <span style="flex:1"></span>
       <button class="btn" id="modalCancel">閉じる</button>
       <button class="btn primary" id="modalConfirm" style="display:none">読み込む</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help Modal -->
+<div class="modal-overlay" id="helpOverlay">
+  <div class="modal help-modal">
+    <h2>使い方ガイド</h2>
+    <div class="help-body">
+      <h3>🗂 パターン</h3>
+      <ul>
+        <li>上部タブ <b>01〜06</b> で陣形パターンを切替。<b>07</b> は自動コースシミュレーション専用</li>
+        <li>カード上部の<b>タイトルはクリックで編集</b>できます(タブにも反映)</li>
+        <li>🛡 ディグ / 📥 レセプション タブで場面を切替(コース線はリセットされます)</li>
+      </ul>
+      <h3>▶ 配置モード</h3>
+      <ul>
+        <li>選手・ボールを<b>ドラッグで移動</b>(コート外もOK)</li>
+        <li>「陣形」プルダウンでプリセット11陣形を呼び出し / ⇄で左右反転 / ↺でリセット</li>
+        <li>👥 チームプロファイルで実在チームの身長分布を味方/相手に一括適用</li>
+      </ul>
+      <h3>→ コースモード</h3>
+      <ul>
+        <li>球種(強打/ワンタッチ/ループ/フェイント)またはサーブ種チップを選ぶと自動でコースモードに</li>
+        <li><b>ボールから目標へドラッグ</b>して軌道を描く / <b>線をタップで削除</b></li>
+        <li>「範囲±°」で扇形(到達範囲)の広がりを調整</li>
+      </ul>
+      <h3>🎥 3Dビュー([3D]ボタン)</h3>
+      <ul>
+        <li>カメラ: 俯瞰/ATK/BLK/BL/SIDE のプリセット + ドラッグ回転・ホイールズーム</li>
+        <li>選手・ボール・選択コースの🟡ピンは<b>3D内でもドラッグ移動</b>可能</li>
+        <li>📏 身長調整パネル: 身長スライダーと 🛡ブロック / 💥スパイク ポーズ切替</li>
+        <li>▶ 再生: 選択コースを実速度ベースでボールが飛ぶアニメーション</li>
+      </ul>
+      <h3>💾 データ</h3>
+      <ul>
+        <li>編集内容は<b>自動でブラウザに保存</b>されます(この端末のみ)</li>
+        <li>別端末と共有するには エクスポート → 💾ファイルに保存 / インポート → 📂ファイルを選ぶ</li>
+        <li><b>↩ 元に戻す(Ctrl+Z)</b>で直前の操作(移動・削除・リセット等)を取り消せます</li>
+      </ul>
+    </div>
+    <div class="modal-actions">
+      <button class="btn primary" id="helpClose">閉じる</button>
     </div>
   </div>
 </div>
@@ -1263,6 +1343,7 @@ function applyTeamProfile(idx, profileKey, side) {
   if (!profile) return;
   const pattern = state.patterns[idx];
   if (!pattern) return;
+  pushUndo();
   if (side === 'our') {
     pattern.ourPlayers.forEach(p => {
       const h = profile.heights[p.id];
@@ -1325,6 +1406,7 @@ function defaultBallForScene(scene) {
 function switchPatternScene(idx, newScene) {
   const pattern = state.patterns[idx];
   if (!pattern || pattern.scene === newScene) return;
+  pushUndo(); // コースがリセットされるためUndo履歴へ
   pattern.scene = newScene;
   pattern.courses = []; // 型不整合のためクリア
   pattern.ball = defaultBallForScene(newScene);
@@ -1489,61 +1571,115 @@ function makeSimDefaultPattern() {
 
 let state = loadState();
 
+// パース済みオブジェクトを検証し、欠損フィールドを補完して返す。
+// 不正な構造なら null。localStorage 復元とインポートの両方で使う
+// (エクスポートは7パターン構成なので、6=旧データ / 7=現行データの両方を受け付ける)。
+function normalizeState(parsed) {
+  if (!parsed || !Array.isArray(parsed.patterns) || parsed.patterns.length < 6) return null;
+  parsed.patterns = parsed.patterns.slice(0, 7);
+  // 旧データ(6パターン)に7番目=自動シミュレーションを追加
+  if (parsed.patterns.length === 6) {
+    parsed.patterns.push(makeSimDefaultPattern());
+  }
+  // パターン7が普通のパターンとして保存されていた場合のためにisSimフラグも保証
+  if (parsed.patterns[6] && typeof parsed.patterns[6].isSim !== 'boolean') {
+    parsed.patterns[6].isSim = true;
+  }
+  if (typeof parsed.activePattern !== 'number' || parsed.activePattern < 0 || parsed.activePattern > 6) {
+    parsed.activePattern = 0;
+  }
+  // Backfill new fields if missing
+  parsed.patterns.forEach((p, i) => {
+    if (typeof p.title !== 'string' || !p.title) p.title = `パターン ${i + 1}`;
+    if (typeof p.memo !== 'string') p.memo = '';
+    if (!p.preset) p.preset = 'w-type';
+    if (!Array.isArray(p.ourPlayers) || p.ourPlayers.length === 0) p.ourPlayers = defaultOurPlayers();
+    if (!Array.isArray(p.oppPlayers) || p.oppPlayers.length === 0) p.oppPlayers = defaultOppPlayers();
+    if (!p.ball) p.ball = defaultBall();
+    if (typeof p.ball.h !== 'number') p.ball.h = 2.5;
+    if (!Array.isArray(p.courses)) p.courses = [];
+    if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
+    p.halfAngle = clamp(p.halfAngle, 0, 60);
+    if (!p.mode) p.mode = 'place';
+    if (!p.currentShotType) p.currentShotType = 'strike';
+    // シーン分離(_es5)
+    if (!p.scene) p.scene = 'dig';
+    if (!p.currentServeType) p.currentServeType = 'underhand';
+    if (!p.currentServeRange) p.currentServeRange = 'normal';
+    if (!p.receiverTargetId) p.receiverTargetId = 'S';
+    if (!p.ourPlayers.find(pl => pl.id === p.attackerId)) p.attackerId = p.ourPlayers[0].id;
+    // Backfill heightCm / isBlocker / isSpiker for existing players
+    p.ourPlayers.forEach(pl => {
+      if (typeof pl.heightCm !== 'number') pl.heightCm = defaultHeightFor(pl.id);
+      if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
+      if (typeof pl.isSpiker !== 'boolean') pl.isSpiker = false;
+    });
+    p.oppPlayers.forEach(pl => {
+      if (typeof pl.heightCm !== 'number') pl.heightCm = 155;
+      if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
+      if (typeof pl.isSpiker !== 'boolean') pl.isSpiker = false;
+    });
+    // Backfill shot type / arc height / range for old courses
+    p.courses.forEach(c => {
+      if (!c.type) c.type = 'strike';
+      if (typeof c.arcHeight !== 'number') c.arcHeight = DEFAULT_ARC[c.type] ?? 0;
+      if ((c.type === 'floater' || c.type === 'jumpfloat') && !c.range) c.range = 'normal';
+    });
+  });
+  return parsed;
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return makeDefaultState();
-    const parsed = JSON.parse(raw);
-    if (!parsed.patterns || (parsed.patterns.length !== 6 && parsed.patterns.length !== 7)) return makeDefaultState();
-    // 旧データ(6パターン)に7番目=自動シミュレーションを追加
-    if (parsed.patterns.length === 6) {
-      parsed.patterns.push(makeSimDefaultPattern());
-    }
-    // パターン7が普通のパターンとして保存されていた場合のためにisSimフラグも保証
-    if (parsed.patterns[6] && typeof parsed.patterns[6].isSim !== 'boolean') {
-      parsed.patterns[6].isSim = true;
-    }
-    if (typeof parsed.activePattern !== 'number' || parsed.activePattern < 0 || parsed.activePattern > 6) {
-      parsed.activePattern = 0;
-    }
-    // Backfill new fields if missing
-    parsed.patterns.forEach(p => {
-      if (!p.ball) p.ball = defaultBall();
-      if (typeof p.ball.h !== 'number') p.ball.h = 2.5;
-      if (!Array.isArray(p.courses)) p.courses = [];
-      if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
-      if (!p.mode) p.mode = 'place';
-      if (!p.currentShotType) p.currentShotType = 'strike';
-      // シーン分離(_es5)
-      if (!p.scene) p.scene = 'dig';
-      if (!p.currentServeType) p.currentServeType = 'underhand';
-      if (!p.currentServeRange) p.currentServeRange = 'normal';
-      if (!p.receiverTargetId) p.receiverTargetId = 'S';
-      // 既存コースに range が無い floater/jumpfloat は normal でbackfill
-      (p.courses || []).forEach(c => {
-        if ((c.type === 'floater' || c.type === 'jumpfloat') && !c.range) c.range = 'normal';
-      });
-      // Backfill heightCm / isBlocker / isSpiker for existing players
-      (p.ourPlayers || []).forEach(pl => {
-        if (typeof pl.heightCm !== 'number') pl.heightCm = defaultHeightFor(pl.id);
-        if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
-        if (typeof pl.isSpiker !== 'boolean') pl.isSpiker = false;
-      });
-      (p.oppPlayers || []).forEach(pl => {
-        if (typeof pl.heightCm !== 'number') pl.heightCm = 155;
-        if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
-        if (typeof pl.isSpiker !== 'boolean') pl.isSpiker = false;
-      });
-      // Backfill shot type and arc height for old courses
-      p.courses.forEach(c => {
-        if (!c.type) c.type = 'strike';
-        if (typeof c.arcHeight !== 'number') c.arcHeight = DEFAULT_ARC[c.type] ?? 0;
-      });
-    });
-    return parsed;
+    return normalizeState(JSON.parse(raw)) || makeDefaultState();
   } catch (e) {
     return makeDefaultState();
   }
+}
+
+// ---------- UNDO ----------
+// 構造を変える操作(ドラッグ開始・コース追加/削除・プリセット適用・リセット等)の直前に
+// pushUndo() でスナップショットを積む。Ctrl+Z / ↩ボタンで1つ戻す。
+const UNDO_LIMIT = 40;
+const undoStack = [];
+
+function pushUndo() {
+  const snap = JSON.stringify(state);
+  if (undoStack[undoStack.length - 1] === snap) return; // 変化なしの重複は積まない
+  undoStack.push(snap);
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  updateUndoBtn();
+}
+
+function undo() {
+  const cur = JSON.stringify(state);
+  let snap = undoStack.pop();
+  // 「ドラッグ開始したが動かさなかった」等で現状と同一のスナップショットはスキップ
+  while (snap === cur && undoStack.length) snap = undoStack.pop();
+  if (!snap || snap === cur) { updateUndoBtn(); return; }
+  try {
+    const restored = normalizeState(JSON.parse(snap));
+    if (!restored) throw new Error('snapshot broken');
+    state = restored;
+    saveState();
+    renderAll();
+    // 3Dビューを開いている場合はシーンも作り直す
+    const overlay3d = document.getElementById('view3dOverlay');
+    if (overlay3d && overlay3d.classList.contains('show') && window._volleyRebuild3D) {
+      window._volleyRebuild3D();
+    }
+    showToast('↩ 元に戻しました');
+  } catch (e) {
+    console.warn('undo failed', e);
+  }
+  updateUndoBtn();
+}
+
+function updateUndoBtn() {
+  const btn = document.getElementById('btnUndo');
+  if (btn) btn.disabled = undoStack.length === 0;
 }
 
 function saveState() {
@@ -1919,11 +2055,11 @@ function buildCourtSvg(pattern, idx) {
       pdStart = null;
       pdMoved = false;
       if (moved) return; // タップではなくスクロール扱い
-      if (confirm('このコース線を削除しますか?')) {
-        state.patterns[idx].courses.splice(ci, 1);
-        saveState();
-        rerenderPatternKeepingFocus(idx);
-      }
+      pushUndo();
+      state.patterns[idx].courses.splice(ci, 1);
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+      showToast('🗑 コースを削除しました(↩で戻せます)');
     });
     svg.appendChild(g);
   });
@@ -2173,6 +2309,7 @@ function attachPlayerDrag(group, patternIdx, playerId, kind) {
     const player = playerArr.find(pp => pp.id === playerId);
     if (!player) return;
 
+    pushUndo(); // ドラッグ前の配置をUndo履歴へ
     dragData = {
       svg,
       offsetX: p.x - player.x,
@@ -2249,6 +2386,7 @@ function attachBallDrag(group, patternIdx) {
     const p = getSvgPoint(svg, evt);
     const ball = state.patterns[patternIdx].ball;
 
+    pushUndo(); // ドラッグ前のボール位置をUndo履歴へ
     dragData = {
       svg,
       offsetX: p.x - ball.x,
@@ -2374,6 +2512,7 @@ function setupCourseModeHandlers(svg, idx) {
     const courseRange = (pattern.scene === 'reception' && (courseType === 'floater' || courseType === 'jumpfloat'))
       ? (pattern.currentServeRange || 'normal')
       : null;
+    pushUndo();
     pattern.courses.push({
       x2: drawData.x2,
       y2: drawData.y2,
@@ -2406,9 +2545,8 @@ function wireCardEvents(card, idx) {
   });
 
   card.querySelector('[data-action="reset-one"]').addEventListener('click', () => {
-    if (confirm(`「${state.patterns[idx].title}」を初期状態にもどしますか?`)) {
-      resetPattern(idx);
-    }
+    resetPattern(idx);
+    showToast(`↺ 「${state.patterns[idx].title}」をリセットしました(↩で戻せます)`);
   });
 
   // チームプロファイル: 選択変更でnote更新
@@ -2443,9 +2581,7 @@ function wireCardEvents(card, idx) {
   if (simBtn) {
     simBtn.addEventListener('click', () => {
       const pattern = state.patterns[idx];
-      if (pattern.courses.length > 0) {
-        if (!confirm(`現在の${pattern.courses.length}本のコースをクリアして、シミュレーション結果に置き換えます。よろしいですか?`)) return;
-      }
+      pushUndo(); // 既存コースの置き換え前にUndo履歴へ
       const result = simulateCoursesForPattern(pattern);
       pattern.courses = result.courses.map(c => ({ ...c }));
       // 結果ノートを表示
@@ -2491,6 +2627,7 @@ function wireCardEvents(card, idx) {
   // Toggle ball
   card.querySelector('[data-action="toggle-ball"]').addEventListener('click', (e) => {
     const p = state.patterns[idx];
+    pushUndo(); // 非表示時はコースも消えるためUndo履歴へ
     p.ball.visible = !p.ball.visible;
     if (!p.ball.visible) {
       // Hiding ball also clears courses
@@ -2524,12 +2661,13 @@ function wireCardEvents(card, idx) {
 
   // Clear courses
   card.querySelector('[data-action="clear-courses"]').addEventListener('click', () => {
-    if (state.patterns[idx].courses.length === 0) return;
-    if (confirm('全てのコース線を削除しますか?')) {
-      state.patterns[idx].courses = [];
-      saveState();
-      rerenderPatternKeepingFocus(idx);
-    }
+    const n = state.patterns[idx].courses.length;
+    if (n === 0) return;
+    pushUndo();
+    state.patterns[idx].courses = [];
+    saveState();
+    rerenderPatternKeepingFocus(idx);
+    showToast(`🗑 コース${n}本を削除しました(↩で戻せます)`);
   });
 
   // Shot type chips
@@ -2716,6 +2854,7 @@ function simulateCoursesForPattern(pattern) {
 function applyPreset(idx, presetKey) {
   const preset = PRESETS[presetKey];
   if (!preset) return;
+  pushUndo();
   state.patterns[idx].ourPlayers = JSON.parse(JSON.stringify(preset.players));
   state.patterns[idx].preset = presetKey;
   if (!state.patterns[idx].ourPlayers.find(p => p.id === state.patterns[idx].attackerId)) {
@@ -2727,6 +2866,7 @@ function applyPreset(idx, presetKey) {
 
 function mirrorPattern(idx) {
   const center = (COURT.ourLeft + COURT.ourRight) / 2;
+  pushUndo();
   const p = state.patterns[idx];
   p.ourPlayers.forEach(pp => { pp.x = center * 2 - pp.x; });
   p.oppPlayers.forEach(pp => { pp.x = center * 2 - pp.x; });
@@ -2737,6 +2877,7 @@ function mirrorPattern(idx) {
 }
 
 function resetPattern(idx) {
+  pushUndo();
   const fresh = makeDefaultState().patterns[idx];
   fresh.title = state.patterns[idx].title;
   state.patterns[idx] = fresh;
@@ -2745,22 +2886,43 @@ function resetPattern(idx) {
 }
 
 // ---------- TOP BAR ACTIONS ----------
+document.getElementById('btnUndo').addEventListener('click', undo);
+
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+    const t = e.target;
+    // テキスト編集中はブラウザ標準のテキストUndoに任せる
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    undo();
+  }
+});
+
 document.getElementById('btnResetAll').addEventListener('click', () => {
   if (confirm('全7パターン(自動シミュ含む)を初期状態にもどします。よろしいですか?')) {
+    pushUndo();
     state = makeDefaultState();
     saveState();
     renderAll();
-    showToast('全パターンをリセットしました');
+    showToast('全パターンをリセットしました(↩で戻せます)');
   }
 });
 
 document.getElementById('btnExport').addEventListener('click', () => {
   const json = JSON.stringify(state, null, 2);
-  openModal('エクスポート', '下のテキストをコピーして保存してください。読み込みは「インポート」ボタンから。', json, false);
+  openModal('エクスポート', '「💾 ファイルに保存」でJSONをダウンロード、または「📋 コピー」でクリップボードへ。読み込みは「インポート」から。', json, false);
 });
 
 document.getElementById('btnImport').addEventListener('click', () => {
-  openModal('インポート', '保存したJSONを貼り付けて「読み込む」を押してください。', '', true);
+  openModal('インポート', '「📂 ファイルを選ぶ」でエクスポートしたJSONファイルを読み込むか、テキストを貼り付けて「読み込む」を押してください。', '', true);
+});
+
+// ---------- HELP MODAL ----------
+const helpOverlay = document.getElementById('helpOverlay');
+document.getElementById('btnHelp').addEventListener('click', () => helpOverlay.classList.add('show'));
+document.getElementById('helpClose').addEventListener('click', () => helpOverlay.classList.remove('show'));
+helpOverlay.addEventListener('click', (e) => {
+  if (e.target === helpOverlay) helpOverlay.classList.remove('show');
 });
 
 // ---------- MODAL ----------
@@ -2770,6 +2932,10 @@ const modalDesc = document.getElementById('modalDesc');
 const modalTextarea = document.getElementById('modalTextarea');
 const modalConfirm = document.getElementById('modalConfirm');
 const modalCancel = document.getElementById('modalCancel');
+const modalDownload = document.getElementById('modalDownload');
+const modalCopy = document.getElementById('modalCopy');
+const modalFileBtn = document.getElementById('modalFileBtn');
+const modalFileInput = document.getElementById('modalFileInput');
 
 function openModal(title, desc, text, allowImport) {
   modalTitle.textContent = title;
@@ -2777,6 +2943,9 @@ function openModal(title, desc, text, allowImport) {
   modalTextarea.value = text;
   modalTextarea.readOnly = !allowImport;
   modalConfirm.style.display = allowImport ? 'inline-block' : 'none';
+  modalFileBtn.style.display = allowImport ? 'inline-block' : 'none';
+  modalDownload.style.display = allowImport ? 'none' : 'inline-block';
+  modalCopy.style.display = allowImport ? 'none' : 'inline-block';
   modalOverlay.classList.add('show');
   if (!allowImport) modalTextarea.select();
 }
@@ -2785,34 +2954,71 @@ modalCancel.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', (e) => {
   if (e.target === modalOverlay) closeModal();
 });
-modalConfirm.addEventListener('click', () => {
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (helpOverlay.classList.contains('show')) helpOverlay.classList.remove('show');
+  else if (modalOverlay.classList.contains('show')) closeModal();
+});
+
+// JSONファイルとしてダウンロード
+modalDownload.addEventListener('click', () => {
+  const blob = new Blob([modalTextarea.value], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `volley-formation-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('💾 ファイルに保存しました');
+});
+
+// クリップボードにコピー(非対応環境はテキスト選択にフォールバック)
+modalCopy.addEventListener('click', async () => {
   try {
-    const parsed = JSON.parse(modalTextarea.value);
-    if (!parsed.patterns || !Array.isArray(parsed.patterns) || parsed.patterns.length !== 6) {
-      throw new Error('形式が正しくありません');
+    await navigator.clipboard.writeText(modalTextarea.value);
+    showToast('📋 コピーしました');
+  } catch (e) {
+    modalTextarea.focus();
+    modalTextarea.select();
+    showToast('コピーできない環境です。選択済みテキストを手動でコピーしてください');
+  }
+});
+
+// ファイル選択 → 読み込んでそのままインポート
+modalFileBtn.addEventListener('click', () => modalFileInput.click());
+modalFileInput.addEventListener('change', () => {
+  const file = modalFileInput.files && modalFileInput.files[0];
+  modalFileInput.value = ''; // 同じファイルを再選択できるように
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    modalTextarea.value = String(reader.result || '');
+    doImport();
+  };
+  reader.onerror = () => alert('ファイルの読み込みに失敗しました');
+  reader.readAsText(file);
+});
+
+function doImport() {
+  try {
+    const parsed = normalizeState(JSON.parse(modalTextarea.value));
+    if (!parsed) {
+      throw new Error('形式が正しくありません(patterns 配列が6または7パターン必要です)');
     }
-    // Backfill new fields
-    parsed.patterns.forEach(p => {
-      if (!p.ball) p.ball = defaultBall();
-      if (typeof p.ball.h !== 'number') p.ball.h = 2.5;
-      if (!Array.isArray(p.courses)) p.courses = [];
-      if (typeof p.halfAngle !== 'number') p.halfAngle = 15;
-      if (!p.mode) p.mode = 'place';
-      if (!p.currentShotType) p.currentShotType = 'strike';
-      p.courses.forEach(c => {
-        if (!c.type) c.type = 'strike';
-        if (typeof c.arcHeight !== 'number') c.arcHeight = DEFAULT_ARC[c.type] ?? 0;
-      });
-    });
+    pushUndo();
     state = parsed;
     saveState();
     renderAll();
     closeModal();
-    showToast('インポートしました');
+    showToast('📥 インポートしました(↩で戻せます)');
   } catch (e) {
     alert('読み込みに失敗しました: ' + e.message);
   }
-});
+}
+modalConfirm.addEventListener('click', doImport);
 
 // ---------- UTIL ----------
 function appendRect(svg, x, y, w, h, cls, outlineOnly = false) {
@@ -2876,6 +3082,7 @@ window._volleyCourt = COURT;
 window._volleyDefaultArc = DEFAULT_ARC;
 window._volleySave = saveState;
 window._volleyRenderAll = renderAll;
+window._volleyPushUndo = pushUndo;
 
 // ---------- INIT ----------
 renderAll();
@@ -3657,7 +3864,7 @@ function buildStrikeWithBlock(scene, bx, by, bz, tx, tz, blocker, halfAngleDeg, 
   scene.add(bounceBadge);
 
   // animCurve: 全体の通過軌道(ball→hand→target)を1本のCatmullRomで構築
-  const allPts = phase1Points.concat(slipPts.slice(1));
+  const allPts = p1Pts.concat(slipPts.slice(1));
   const animCurve = new THREE.CatmullRomCurve3(allPts);
   courseObjects.push({
     tube: p1Tube, tubeGeo: p1Geo,
@@ -4386,6 +4593,7 @@ function onPointerDown(event) {
     courseTargetHandle.traverse(o => { if (o.isMesh) handleTargets.push(o); });
     const hHits = DRAG_RAYCASTER.intersectObjects(handleTargets, false);
     if (hHits.length > 0) {
+      if (window._volleyPushUndo) window._volleyPushUndo();
       dragState = { isCourseTarget: true, courseIdx: courseTargetHandle.userData.courseIdx };
       if (controls) controls.enabled = false;
       canvasWrap.style.cursor = 'grabbing';
@@ -4397,6 +4605,7 @@ function onPointerDown(event) {
   if (ballMesh) {
     const ballHits = DRAG_RAYCASTER.intersectObject(ballMesh, false);
     if (ballHits.length > 0) {
+      if (window._volleyPushUndo) window._volleyPushUndo();
       dragState = { isBall: true, startY: ballMesh.position.y };
       if (controls) controls.enabled = false;
       canvasWrap.style.cursor = 'grabbing';
@@ -4418,6 +4627,7 @@ function onPointerDown(event) {
   if (!node) return;
   const pg = playerGroups.find(p => p.group === node);
   if (!pg) return;
+  if (window._volleyPushUndo) window._volleyPushUndo();
   dragState = pg;
   if (controls) controls.enabled = false;
   canvasWrap.style.cursor = 'grabbing';
@@ -4570,6 +4780,9 @@ function renderHeightsPanel(pattern) {
     const val = document.createElement('span');
     val.className = 'h-val';
     val.textContent = `${slider.value}cm`;
+    slider.addEventListener('pointerdown', () => {
+      if (window._volleyPushUndo) window._volleyPushUndo();
+    });
     slider.addEventListener('input', (e) => {
       const newH = parseInt(e.target.value, 10);
       val.textContent = `${newH}cm`;
@@ -4591,6 +4804,7 @@ function renderHeightsPanel(pattern) {
     blkToggle.addEventListener('click', () => {
       const player = list.find(x => x.id === p.id);
       if (!player) return;
+      if (window._volleyPushUndo) window._volleyPushUndo();
       player.isBlocker = !player.isBlocker;
       if (player.isBlocker) player.isSpiker = false; // 排他
       blkToggle.classList.toggle('active', player.isBlocker);
@@ -4601,6 +4815,7 @@ function renderHeightsPanel(pattern) {
     spkToggle.addEventListener('click', () => {
       const player = list.find(x => x.id === p.id);
       if (!player) return;
+      if (window._volleyPushUndo) window._volleyPushUndo();
       player.isSpiker = !player.isSpiker;
       if (player.isSpiker) player.isBlocker = false; // 排他
       spkToggle.classList.toggle('active', player.isSpiker);
@@ -4638,6 +4853,7 @@ function renderHeightsPanel(pattern) {
   reset.className = 'cam-preset h-reset';
   reset.textContent = '🔄 標準にもどす(身長デフォルト、🛡💥解除)';
   reset.addEventListener('click', () => {
+    if (window._volleyPushUndo) window._volleyPushUndo();
     pattern.ourPlayers.forEach(p => {
       p.heightCm = defaultHeightFor(p.id);
       p.isBlocker = false;
@@ -4671,6 +4887,9 @@ function syncArcSliderToCourse(courseIdx, pattern) {
   arcVal.textContent = arc.toFixed(2) + ' m';
 }
 
+ballHeightSlider.addEventListener('pointerdown', () => {
+  if (window._volleyPushUndo) window._volleyPushUndo();
+});
 ballHeightSlider.addEventListener('input', (e) => {
   if (currentIdx < 0) return;
   const state = window._volleyState();
@@ -4706,6 +4925,9 @@ if (playCourseBtn) {
   playCourseBtn.addEventListener('click', playSelectedCourse);
 }
 
+arcSlider.addEventListener('pointerdown', () => {
+  if (window._volleyPushUndo) window._volleyPushUndo();
+});
 arcSlider.addEventListener('input', (e) => {
   if (currentIdx < 0) return;
   const state = window._volleyState();
@@ -4802,6 +5024,18 @@ document.querySelectorAll('.cam-preset').forEach(btn => {
 
 // Expose
 window._open3DViewImpl = open3D;
+
+// 2D側のUndoなどで状態が差し替わった時に、開いている3Dビューを作り直す
+window._volleyRebuild3D = function() {
+  if (currentIdx < 0) return;
+  const state = window._volleyState();
+  const pattern = state.patterns[currentIdx];
+  if (!pattern) { close3D(); return; }
+  patternNameEl.textContent = `${String(currentIdx + 1).padStart(2, '0')} · ${pattern.title}`;
+  rebuildSceneFromCurrent();
+  initSliders(pattern);
+  renderHeightsPanel(pattern);
+};
 
 // Process any pending open
 if (window._pending3DOpen !== null && window._pending3DOpen !== undefined) {

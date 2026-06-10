@@ -7,15 +7,35 @@
 
 ```
 テスト開発アプリ/
-├─ index.html              ← ギャラリー（コート画面）
+├─ index.html                      ← ギャラリー（コート画面、/ で検索フォーカス）
 ├─ apps/
+│   ├─ volley-formation-editor/
+│   │   ├─ index.html              ← 陣形エディタ v4（2D配置 + コース描画 + 3Dビュー）
+│   │   ├─ catalog.html            ← 陣形カタログ（11陣形のSVG図解）
+│   │   └─ PLACEMENT_RULES.md      ← 陣形・座標系の設計書
 │   └─ sample-court/
-│       └─ index.html       ← サンプルアプリ（アプリ確認）
+│       └─ index.html              ← サンプルアプリ（デプロイ動作確認用）
 ├─ package.json
 ├─ vercel.json
 ├─ .gitignore
 └─ README.md
 ```
+
+## アプリ紹介
+
+### 🏐 Volley陣形エディタ v4（`apps/volley-formation-editor/`）
+
+小学生バレー（16m×8m・ネット2.00m・6役割 L/C/R/S/LB/RB）向けの陣形ボード。
+
+- **7パターン管理**: 01〜06 は自由編集、07 は自動コースシミュレーション
+- **シーン切替**: 🛡 ディグ（スパイクレシーブ）/ 📥 レセプション（サーブレシーブ）
+- **配置モード**: 選手・ボールをドラッグ（コート外OK）、プリセット11陣形、左右反転
+- **コースモード**: 球種（強打/ワンタッチ/ループ/フェイント）・サーブ種（アンダー〜ジャンプ）別に軌道を描画、扇形の到達範囲表示
+- **3Dビュー**: Three.js でコートを立体表示。カメラプリセット、身長調整＋🛡/💥ポーズ、弾道再生アニメ
+- **チームプロファイル**: 実在チームの身長分布を一括適用
+- **↩ 元に戻す（Ctrl+Z）**: 移動・削除・リセットなどを取り消し
+- **保存**: localStorage 自動保存 + JSONファイルのエクスポート/インポート
+- **❓ 使い方**: アプリ内ヘルプ参照
 
 ## ローカル確認
 
@@ -34,25 +54,11 @@ npm run dev    # http://localhost:3000
    ```
 3. `pos` は 1〜6（バレーのポジション番号）。前衛：4/3/2、後衛：5/6/1。
 
-## GitHub に push する手順
-
-```bash
-cd "C:/Users/市村勇司/Desktop/テスト開発アプリ"
-git init
-git add .
-git commit -m "init: volleyball court app gallery"
-
-# GitHub 側で空のリポジトリを作成（Web）してから：
-git branch -M main
-git remote add origin https://github.com/<your-account>/test-dev-apps.git
-git push -u origin main
-```
-
 ## Vercel に公開する手順（GitHub 連携・推奨）
 
 1. <https://vercel.com> にログイン（GitHub アカウントで OK）
 2. **Add New… → Project** を押す
-3. 上で push したリポジトリ `test-dev-apps` を選択 → **Import**
+3. リポジトリ `test-dev-apps` を選択 → **Import**
 4. Framework Preset は **Other**（静的 HTML なので変更不要）
 5. **Deploy** を押す → 数十秒で `https://<project>.vercel.app` が払い出される
 6. 以降、`main` に push するたびに自動デプロイされます

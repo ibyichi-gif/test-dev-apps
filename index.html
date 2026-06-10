@@ -222,7 +222,7 @@
   </header>
 
   <div class="toolbar">
-    <input type="text" class="search" id="searchInput" placeholder="アプリ名で検索…（例：保険、OCR、フォーム）">
+    <input type="text" class="search" id="searchInput" placeholder="アプリ名で検索…（ / でフォーカス、Enterで開く）">
   </div>
 
   <div class="court-wrap">
@@ -313,7 +313,30 @@
     document.getElementById("visibleCount").textContent = f ? visible : apps.length;
   }
 
-  document.getElementById("searchInput").addEventListener("input", e => render(e.target.value));
+  const searchInput = document.getElementById("searchInput");
+  searchInput.addEventListener("input", e => render(e.target.value));
+
+  // Enter: 最初に表示中のアプリを開く / Escape: 検索をクリア
+  searchInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      const first = [...document.querySelectorAll(".position[href]")]
+        .find(n => n.style.display !== "none");
+      if (first) window.location.href = first.href;
+    } else if (e.key === "Escape") {
+      searchInput.value = "";
+      render();
+      searchInput.blur();
+    }
+  });
+
+  // どこにいても "/" で検索ボックスへ
+  window.addEventListener("keydown", e => {
+    if (e.key === "/" && document.activeElement !== searchInput) {
+      e.preventDefault();
+      searchInput.focus();
+    }
+  });
+
   render();
 </script>
 </body>

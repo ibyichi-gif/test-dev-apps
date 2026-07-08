@@ -1691,7 +1691,9 @@ function makeSpikeSimPattern(side) {
   const spikerId = isR ? 'OR' : 'OL';
   opp.forEach(p => { if (p.id === spikerId) { p.isSpiker = true; p.heightCm = 160; } });
   const spk = opp.find(p => p.id === spikerId);
-  const ball = { x: spk.x, y: spk.y - 18, visible: true, h: 2.5 };
+  // セットはスパイカーのやや前(ネット寄り=相手側では大きいy)・打点の高さ。
+  // 旧: spk.y-18 だとネットと反対側=体勢が悪いセット判定になっていた。
+  const ball = { x: spk.x, y: spk.y + 12, visible: true, h: 2.6 };
   return {
     title: isR ? '🤖 スパイクsim(右)' : '🤖 スパイクsim(左)',
     ourPlayers: our,
@@ -3205,7 +3207,11 @@ function simulateCoursesForPattern(pattern) {
 
   const ballTooHigh = ball.h > maxReach + 0.10;
   const ballTooLow = ball.h < (totalH * 0.85);          // 肩より低い→打てない
-  const badSet = (ballAheadM < -0.4) || (ballAheadM > 2.5) || (Math.abs(ballLatM) > 1.6);
+  // 「体勢が悪い」判定の基準(目安。これを超えると弱い球になりやすい):
+  //   前後: ボールがスパイカーより -0.8m(後ろ)〜 +3.0m(ネット側)の範囲外
+  //   横 : スパイカーから左右 2.2m を超えて離れている
+  const AHEAD_MIN = -0.8, AHEAD_MAX = 3.0, LAT_MAX = 2.2;
+  const badSet = (ballAheadM < AHEAD_MIN) || (ballAheadM > AHEAD_MAX) || (Math.abs(ballLatM) > LAT_MAX);
 
   // ----- スパイカーの利き手向き(右利き想定): xが小さい側(左側) → クロスは右へ、ライン側は同方向 -----
   const cxOur = (COURT.ourLeft + COURT.ourRight) / 2;
@@ -3227,10 +3233,12 @@ function simulateCoursesForPattern(pattern) {
     notes.push(`⚠ ボール高さ${ball.h.toFixed(2)}m が肩より低い → 強打不可。アンダー処理`);
   }
   if (badSet && !ballTooHigh && !ballTooLow) {
-    notes.push(`⚠ ボール位置がスパイカー基準で前後${ballAheadM.toFixed(2)}m / 横${ballLatM.toFixed(2)}m → 体勢が悪く弱い球になりやすい`);
+    notes.push(`⚠ セットがスパイカーから前後${ballAheadM.toFixed(2)}m / 横${ballLatM.toFixed(2)}m 離れています(目安:前後 ${AHEAD_MIN}〜${AHEAD_MAX}m・横±${LAT_MAX}m 以内が打ちやすい)。弱い球になりやすいですが、コースは生成します。`);
   }
 
-  const canSpike = !ballTooHigh && !ballTooLow && !badSet;
+  // 強打可否は「物理的に届くか」で判定(高すぎ/低すぎのみ不可)。
+  // セット位置(badSet)が悪くても、コース自体は生成し注記で警告する(旧: badSetで全て抑止していた)。
+  const canSpike = !ballTooHigh && !ballTooLow;
   const courses = [];
 
   // ===== 共通: 着地点 → コース挿入のヘルパー =====
@@ -4151,6 +4159,9 @@ function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heigh
   const stance = isSpiker ? 'spike' : isBlocker ? 'block' : isReceiver ? 'receive' : 'stand';
   const group = new THREE.Group();
   group.userData = { playerId, side: isOpp ? 'opp' : 'our', isPlayer: true };
+  // ネットは z=0。味方は z>0 側にいるので -z(ネット方向)を向く、相手は z<0 側なので +z を向く。
+  // 図形は +z を正面として組むため、味方だけ180°回してネットと対面させる(旧: 全員が自陣を向いていた)。
+  group.rotation.y = isOpp ? 0 : Math.PI;
 
   // 実寸プロポーション (小学生想定)
   const totalH = heightCm / 100;                       // m

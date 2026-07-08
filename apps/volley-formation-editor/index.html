@@ -1029,7 +1029,7 @@
   }
   .view3d-controls .heights-grid {
     display: grid;
-    grid-template-columns: auto 1fr auto auto auto;
+    grid-template-columns: auto 1fr auto auto auto auto;
     gap: 4px 6px;
     padding: 8px 10px;
     align-items: center;
@@ -1057,6 +1057,11 @@
     background: #ff5f4a;
     color: #fff;
     border-color: #ff5f4a;
+  }
+  .view3d-controls .heights-grid .pose-toggle.rcv.active {
+    background: #5dcaa5;
+    color: var(--bg-deep);
+    border-color: #5dcaa5;
   }
   .view3d-controls .heights-grid .section-head {
     grid-column: 1 / -1;
@@ -1263,9 +1268,11 @@
     <div class="help-body">
       <h3>🗂 パターン</h3>
       <ul>
-        <li>上部タブ <b>01〜06</b> で陣形パターンを切替。<b>07</b> は自動コースシミュレーション専用</li>
-        <li>カード上部の<b>タイトルはクリックで編集</b>できます(タブにも反映)</li>
-        <li>🛡 ディグ / 📥 レセプション タブで場面を切替(コース線はリセットされます)</li>
+        <li>上部タブ <b>01〜04</b> は自由編集。<b>05〜07</b> は🤖自動シミュレーション対応</li>
+        <li><b>P5=スパイク(左)/ P6=サーブ / P7=スパイク(右)</b> の初期配置。「🎯シミュレーション」で相手の配置からコースを自動生成</li>
+        <li>シミュはシーン連動:<b>🛡ディグ→スパイクコース / 📥レセプション→相手サーブが狙う穴</b>を生成</li>
+        <li>「🎬 初期配置」でsim用のおすすめ配置を読込。カード上部の<b>タイトルはクリックで編集</b></li>
+        <li>🛡 ディグ / 📥 レセプション タブで場面を切替(各シーンのコースは保持されます)</li>
       </ul>
       <h3>▶ 配置モード</h3>
       <ul>
@@ -1283,7 +1290,8 @@
       <ul>
         <li>カメラ: 俯瞰/ATK/BLK/BL/SIDE のプリセット + ドラッグ回転・ホイールズーム</li>
         <li>選手・ボール・選択コースの🟡ピンは<b>3D内でもドラッグ移動</b>可能</li>
-        <li>📏 身長調整パネル: 身長スライダーと 🛡ブロック / 💥スパイク ポーズ切替</li>
+        <li>選手は<b>足つきの立体像</b>で表示。体勢は 🛡ブロック / 💥スパイク / 🙌レシーブ を自動判定(📏身長調整パネルで手動上書きも可)</li>
+        <li>📏 身長調整パネル: 身長スライダーと 🛡/💥/🙌 の体勢トグル(排他)</li>
         <li>▶ 再生: 選択コースを実速度ベースでボールが飛ぶアニメーション</li>
       </ul>
       <h3>💾 データ</h3>
@@ -1478,7 +1486,7 @@ function defaultHeightFor(id) {
 }
 function makePlayer(id, sx, sy, role = 'our') {
   const p = specToSvg(sx, sy);
-  return { id, label: id, x: p.x, y: p.y, role, heightCm: defaultHeightFor(id), isBlocker: false, isSpiker: false };
+  return { id, label: id, x: p.x, y: p.y, role, heightCm: defaultHeightFor(id), isBlocker: false, isSpiker: false, isReceiver: false };
 }
 function defaultOurPlayers() {
   // W型レセプションをデフォルト配置とする
@@ -1627,10 +1635,13 @@ const DEFAULT_PRESET_BY_SCENE = { dig: 'dig-L-tallS', reception: 'w-type' };
 // _es: 6役割モデル / _es2: コート縦横比 1:2 / _es3: 相手OL/OC/OR/OS / _es4: 7パターン化(自動シミュ)
 //   / _es5: シーン分離(ディグ/レセプション)
 const STORAGE_KEY = 'volley_formation_board_v4_es5';
-const SIM_PATTERN_IDX = 6; // パターン7(0-indexed)
+// 自動シミュレーション対応パターン(0-indexed): P5=スパイク / P6=サーブ / P7=スパイク
+const SIM_PATTERN_IDXS = [4, 5, 6];
+const SIM_PATTERN_IDX = 6; // 後方互換(旧: パターン7のみ)
 
 function makeDefaultState() {
-  const patterns = Array.from({ length: 6 }, (_, i) => ({
+  // P1-P4 = 通常編集、P5=スパイクsim(左)/P6=サーブsim/P7=スパイクsim(右)
+  const patterns = Array.from({ length: 4 }, (_, i) => ({
     title: `パターン ${i + 1}`,
     ourPlayers: defaultOurPlayers(),
     oppPlayers: defaultOppPlayers(),
@@ -1648,45 +1659,51 @@ function makeDefaultState() {
     currentServeRange: 'normal',       // floater/jumpfloat時の距離: short|normal|long
     receiverTargetId: 'S',             // パス先(レセプション時のターゲットセッター)
   }));
-  patterns.push(makeSimDefaultPattern());
+  patterns.push(makeSpikeSimPattern('L')); // P5(idx4)
+  patterns.push(makeServeSimPattern());    // P6(idx5)
+  patterns.push(makeSpikeSimPattern('R')); // P7(idx6)
   return { activePattern: 0, patterns };
 }
 
-// 7番目=自動シミュレーション用のデフォルト陣形
-//   - 相手OL を 💥 スパイカーに設定
-//   - 味方L+C を 🛡 ブロッカーに設定 (相手OLに対しての2枚ブロック)
-//   - ボールを OL 上空 高さ2.5m に配置(visible)
-function makeSimDefaultPattern() {
+// スパイクsim用の陣形。side='L' → 相手OLが左から打つ / 'R' → 相手ORが右から打つ。
+//   - 相手スパイカーを 💥 に設定 / 味方2枚を 🛡 ブロッカーに / ボールをスパイカー上空に配置
+function makeSpikeSimPattern(side) {
+  const isR = side === 'R';
   const our = defaultOurPlayers();
-  // 味方 L と C を ブロッカーにし、ややネットに寄せる
-  our.forEach(p => {
-    if (p.id === 'L') { p.isBlocker = true;  const sv = specToSvg(20, 55); p.x = sv.x; p.y = sv.y; }
-    if (p.id === 'C') { p.isBlocker = true;  const sv = specToSvg(38, 55); p.x = sv.x; p.y = sv.y; }
-    if (p.id === 'R') { const sv = specToSvg(80, 65); p.x = sv.x; p.y = sv.y; }
-    if (p.id === 'S') { const sv = specToSvg(60, 58); p.x = sv.x; p.y = sv.y; }
-  });
+  if (isR) {
+    // 右サイド攻撃に対する2枚ブロック(C+R)
+    our.forEach(p => {
+      if (p.id === 'R') { p.isBlocker = true; const sv = specToSvg(80, 55); p.x = sv.x; p.y = sv.y; }
+      if (p.id === 'C') { p.isBlocker = true; const sv = specToSvg(62, 55); p.x = sv.x; p.y = sv.y; }
+      if (p.id === 'L') { const sv = specToSvg(20, 65); p.x = sv.x; p.y = sv.y; }
+      if (p.id === 'S') { const sv = specToSvg(40, 58); p.x = sv.x; p.y = sv.y; }
+    });
+  } else {
+    // 左サイド攻撃に対する2枚ブロック(L+C)
+    our.forEach(p => {
+      if (p.id === 'L') { p.isBlocker = true; const sv = specToSvg(20, 55); p.x = sv.x; p.y = sv.y; }
+      if (p.id === 'C') { p.isBlocker = true; const sv = specToSvg(38, 55); p.x = sv.x; p.y = sv.y; }
+      if (p.id === 'R') { const sv = specToSvg(80, 65); p.x = sv.x; p.y = sv.y; }
+      if (p.id === 'S') { const sv = specToSvg(60, 58); p.x = sv.x; p.y = sv.y; }
+    });
+  }
   const opp = defaultOppPlayers();
-  // 相手OLをスパイカーに(身長160)
-  opp.forEach(p => {
-    if (p.id === 'OL') { p.isSpiker = true; p.heightCm = 160; }
-  });
-  // ボールはOLの真上(SVG)、高さ2.5m
-  const ol = opp.find(p => p.id === 'OL');
-  const ball = { x: ol.x, y: ol.y - 18, visible: true, h: 2.5 };
+  const spikerId = isR ? 'OR' : 'OL';
+  opp.forEach(p => { if (p.id === spikerId) { p.isSpiker = true; p.heightCm = 160; } });
+  const spk = opp.find(p => p.id === spikerId);
+  const ball = { x: spk.x, y: spk.y - 18, visible: true, h: 2.5 };
   return {
-    title: '🤖 自動シミュレーション',
+    title: isR ? '🤖 スパイクsim(右)' : '🤖 スパイクsim(左)',
     ourPlayers: our,
     oppPlayers: opp,
     attackerId: 'L',
-    memo: '相手スパイカー(💥)・ボール位置・味方ブロッカー(🛡)を配置 → 「🎯 シミュレーション」で打てそうなコースを自動生成',
-    preset: 'dig-L-tallS',
+    memo: `相手スパイカー(💥)・ボール・味方ブロッカー(🛡)を配置 → 「🎯 シミュレーション」で${isR ? '右' : '左'}サイド攻撃の打てるコースを自動生成`,
+    preset: isR ? 'dig-R-tallS' : 'dig-L-tallS',
     ball,
     courses: [],
     mode: 'place',
     halfAngle: 15,
     currentShotType: 'strike',
-    // シーン系フィールド(未設定だと初回ロード時に scene===undefined になり、
-    // 陣形ドロップダウンが '中立' のみになる/シーンタブ誤爆でコースが消える)
     scene: 'dig',
     currentServeType: 'underhand',
     currentServeRange: 'normal',
@@ -1694,6 +1711,38 @@ function makeSimDefaultPattern() {
     isSim: true,
   };
 }
+
+// サーブsim用の陣形(レセプション)。相手のサーブが、味方のレセプション隊形の
+// 穴(継ぎ目・前空き・深い隅)を突くコースを自動生成する。
+//   - 味方は W型レセプションで受ける / ボール=相手エンドライン後方のサーブ開始点
+function makeServeSimPattern() {
+  const our = buildPlayers([['L',18,70],['C',50,72],['R',82,70],['S',70,58],['LB',30,85],['RB',70,85]]);
+  const opp = defaultOppPlayers();
+  // サーブ開始点: 相手エンドライン右後方
+  const sv = specToSvg(72, -6);
+  const ball = { x: sv.x, y: Math.max(COURT.playTop + 8, sv.y), visible: true, h: 1.6 };
+  return {
+    title: '🤖 サーブsim',
+    ourPlayers: our,
+    oppPlayers: opp,
+    attackerId: 'L',
+    memo: '味方のレセプション隊形を配置 → 「🎯 シミュレーション」で、相手サーブが狙う穴(継ぎ目・前空き・深い隅)を自動生成',
+    preset: 'w-type',
+    ball,
+    courses: [],
+    mode: 'place',
+    halfAngle: 15,
+    currentShotType: 'strike',
+    scene: 'reception',
+    currentServeType: 'floater',
+    currentServeRange: 'normal',
+    receiverTargetId: 'S',
+    isSim: true,
+  };
+}
+
+// 後方互換の別名(normalizeStateの旧6→7移行で使用)。旧「自動シミュ」=スパイク(左)。
+function makeSimDefaultPattern() { return makeSpikeSimPattern('L'); }
 
 let state = loadState();
 
@@ -1718,14 +1767,15 @@ function normalizeState(input) {
   catch (e) { return null; }
   // 7を超える分は捨てるが、元が7以下なら情報は落ちない
   parsed.patterns = parsed.patterns.slice(0, 7);
-  // 旧データ(6パターン)にのみ7番目=自動シミュレーションを追加
+  // 旧データ(6パターン)にのみ7番目を追加(既存の選手配置は保持)
   if (parsed.patterns.length === 6) {
-    parsed.patterns.push(makeSimDefaultPattern());
+    parsed.patterns.push(makeSpikeSimPattern('R'));
   }
-  // index6 が存在し、かつ isSim 未指定なら sim とみなす(false は尊重)
-  if (parsed.patterns[6] && typeof parsed.patterns[6].isSim !== 'boolean') {
-    parsed.patterns[6].isSim = true;
-  }
+  // sim対応は P5/P6/P7(idx4,5,6)。既存の選手配置は消さず、isSimフラグだけ揃える。
+  // (旧データはidx6のみsimだったので、idx4,5にもsimボタンを付与する移行)
+  parsed.patterns.forEach((p, i) => {
+    if (p && typeof p === 'object') p.isSim = SIM_PATTERN_IDXS.includes(i);
+  });
   if (typeof parsed.activePattern !== 'number' || parsed.activePattern < 0 || parsed.activePattern > 6) {
     parsed.activePattern = 0;
   }
@@ -1767,6 +1817,7 @@ function normalizeState(input) {
       if (typeof pl.heightCm !== 'number' || !isFinite(pl.heightCm)) pl.heightCm = defaultHeightFor(pl.id);
       if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
       if (typeof pl.isSpiker !== 'boolean') pl.isSpiker = false;
+      if (typeof pl.isReceiver !== 'boolean') pl.isReceiver = false;
       if (typeof pl.label !== 'string') pl.label = pl.id;
       if (typeof pl.role !== 'string') pl.role = 'our';
       pl.x = fixCoord(pl.x, (cxLo + cxHi) / 2, cxLo, cxHi);
@@ -1777,6 +1828,7 @@ function normalizeState(input) {
       if (typeof pl.heightCm !== 'number' || !isFinite(pl.heightCm)) pl.heightCm = 155;
       if (typeof pl.isBlocker !== 'boolean') pl.isBlocker = false;
       if (typeof pl.isSpiker !== 'boolean') pl.isSpiker = false;
+      if (typeof pl.isReceiver !== 'boolean') pl.isReceiver = false;
       if (typeof pl.label !== 'string') pl.label = pl.id;
       if (typeof pl.role !== 'string') pl.role = 'opp';
       pl.x = fixCoord(pl.x, (cxLo + cxHi) / 2, cxLo, cxHi);
@@ -2004,20 +2056,24 @@ function renderPattern(pattern, idx) {
 
   // Simulation row (シミュレーションパターンのみ)
   if (pattern.isSim) {
+    const isServe = pattern.scene === 'reception';
     const simRow = document.createElement('div');
     simRow.className = 'control-row sim-row';
     simRow.innerHTML = `
-      <button class="sim-btn" data-action="simulate" title="相手スパイカー位置・ボール・味方ブロックから打てそうなコースを自動生成">
-        🎯 コースシミュレーション
+      <button class="sim-btn" data-action="simulate" title="${isServe ? '味方レセプション隊形の穴を突く相手サーブのコースを自動生成' : '相手スパイカー位置・ボール・味方ブロックから打てそうなコースを自動生成'}">
+        🎯 ${isServe ? 'サーブコースをシミュレーション' : 'スパイクコースをシミュレーション'}
       </button>
+      <button class="small-btn" data-action="load-sim-preset" title="このパターンにsim用のおすすめ初期配置を読み込む">🎬 初期配置</button>
     `;
     controls.appendChild(simRow);
     const simNotes = document.createElement('div');
     simNotes.className = 'sim-notes' + (pattern.simNotes ? ' has-result' : '');
     simNotes.dataset.role = 'sim-notes';
     // 直近のシミュ結果があれば表示(再描画で消えないようpatternに保持)
-    simNotes.textContent = pattern.simNotes ||
-      '相手の💥スパイカー、ボール、味方の🛡ブロッカーを設定 → ボタンを押すと、スパイカーの身長・ボール位置・体勢から打てるコースを自動生成します。💥/🛡の切替は[3D]ビューの📏身長調整パネルから。';
+    const defaultNote = isServe
+      ? '🛡 ディグ / 📥 レセプションでシミュ内容が変わります。今は📥レセプション:味方のレセプション隊形とサーブ開始点(ボール)を配置 → ボタンで、相手サーブが狙う穴(継ぎ目・前空き・深い隅)を自動生成します。'
+      : '🛡 ディグ / 📥 レセプションでシミュ内容が変わります。今は🛡ディグ:相手の💥スパイカー・ボール・味方の🛡ブロッカーを設定 → ボタンで打てるコースを自動生成します。💥/🛡/🙌の切替は[3D]ビューの📏身長調整パネルから。';
+    simNotes.textContent = pattern.simNotes || defaultNote;
     controls.appendChild(simNotes);
   }
 
@@ -2899,21 +2955,24 @@ function wireCardEvents(card, idx) {
     });
   }
 
-  // シミュレーションボタン(パターン7のみ存在)
+  // シミュレーションボタン(simパターンのみ存在)。シーンで内容が変わる:
+  //   ディグ → スパイクコース / レセプション → 相手サーブコース
   const simBtn = card.querySelector('[data-action="simulate"]');
   if (simBtn) {
     simBtn.addEventListener('click', () => {
       const pattern = state.patterns[idx];
       let result;
       try {
-        result = simulateCoursesForPattern(pattern);
+        result = (pattern.scene === 'reception')
+          ? simulateServeCoursesForPattern(pattern)
+          : simulateCoursesForPattern(pattern);
       } catch (e) {
         console.error('[volley-editor] simulation failed:', e);
         showToast('シミュレーションでエラーが発生しました');
         return;
       }
       pattern.simNotes = result.notes.join('\n');
-      // 条件を満たさない(スパイカー未設定/ボール未配置)ときは既存コースを消さない
+      // 条件を満たさないときは既存コースを消さない
       if (!result.courses.length) {
         saveState();
         rerenderPatternKeepingFocus(idx);
@@ -2925,6 +2984,24 @@ function wireCardEvents(card, idx) {
       saveState();
       rerenderPatternKeepingFocus(idx);
       showToast(`🎯 ${result.courses.length}本のコースを生成しました`);
+    });
+  }
+
+  // sim用おすすめ初期配置を読み込む(既存編集を上書きするのでUndo可能に)
+  const loadSimBtn = card.querySelector('[data-action="load-sim-preset"]');
+  if (loadSimBtn) {
+    loadSimBtn.addEventListener('click', () => {
+      pushUndo();
+      const pattern = state.patterns[idx];
+      // どのsim局面を読むか: レセプション→サーブ / それ以外は左右で使い分け(P7=右)
+      let fresh;
+      if (pattern.scene === 'reception') fresh = makeServeSimPattern();
+      else fresh = makeSpikeSimPattern(idx === 6 ? 'R' : 'L');
+      fresh.title = pattern.title; // タイトルは保持
+      state.patterns[idx] = fresh;
+      saveState();
+      rerenderPatternKeepingFocus(idx);
+      showUndoToast('🎬 sim初期配置を読み込みました');
     });
   }
 
@@ -3210,6 +3287,90 @@ function simulateCoursesForPattern(pattern) {
     notes.push('💡 配置を整えてからもう一度お試しください');
   } else {
     notes.unshift(`✓ ${courses.length}本のコースを生成`);
+  }
+  return { courses, notes };
+}
+
+// ---------- SERVE SIMULATION (レセプション用) ----------
+// 入力: pattern (味方レセプション隊形 + サーブ開始点=ball)
+// 出力: { courses: [...], notes: [...] }
+//   ・味方の受け手配置から「守れていない穴」を算出し、相手サーブが狙うコースを自動生成
+//   ・最大の空きスペース / 受け手の継ぎ目 / 前空き(短サーブ) / 深い両隅 を検出
+function simulateServeCoursesForPattern(pattern) {
+  const notes = [];
+  const ball = pattern.ball;
+  if (!ball || !ball.visible) return { courses: [], notes: ['❌ サーブ開始点(ボール)を配置してください(📥レセプション)'] };
+
+  // 受け手 = 味方のうちセッター(パス先)を除く
+  const setterId = pattern.receiverTargetId || 'S';
+  const receivers = pattern.ourPlayers.filter(p => p.id !== setterId);
+  if (receivers.length === 0) return { courses: [], notes: ['❌ レセプションの受け手がいません'] };
+
+  // ラベルは classic script の SERVE_TYPES / SHOT_TYPES_INFO から引く(COURSE_TYPE_LABELSはモジュール側)
+  const typeLabel = (t) => (SERVE_TYPES[t] && SERVE_TYPES[t].name) || (SHOT_TYPES_INFO[t] && SHOT_TYPES_INFO[t].name) || t;
+  const serveLabel = typeLabel(pattern.currentServeType) || 'フローター';
+  notes.push(`📥 味方レセプション${receivers.length}人の隊形 → 相手サーブが突く穴を算出(基準球種:${serveLabel})`);
+
+  // 自陣コート矩形(選手が動ける範囲より少し内側=着地可能域)
+  const L = COURT.ourLeft + 10, R = COURT.ourRight - 10;
+  const T = COURT.ourTop + 8, B = COURT.ourBottom - 8;
+  const attackLine = COURT.ourAttackLine;                 // 前後ゾーンの境目
+  const SVG_PER_M = (COURT.ourBottom - COURT.oppTop) / COURT_WORLD.length; // ≈35
+
+  const courses = [];
+  function pushCourse(label, x2, y2, type, range) {
+    const t = type;
+    const useRange = (t === 'floater' || t === 'jumpfloat') ? (range || 'normal') : null;
+    courses.push({
+      x2: clamp(x2, L, R), y2: clamp(y2, T, B),
+      type: t, range: useRange, arcHeight: DEFAULT_ARC[t] ?? 0,
+    });
+    notes.push(`  ${courses.length}. ${label} (${typeLabel(t)})`);
+  }
+
+  // --- 1. 最大の穴: グリッドで「全受け手までの最小距離」が最大になる点 ---
+  let hole = null, holeScore = -1;
+  for (let gx = L; gx <= R; gx += 14) {
+    for (let gy = T; gy <= B; gy += 14) {
+      let minD = Infinity;
+      for (const r of receivers) { const d = Math.hypot(gx - r.x, gy - r.y); if (d < minD) minD = d; }
+      if (minD > holeScore) { holeScore = minD; hole = { x: gx, y: gy }; }
+    }
+  }
+  if (hole) {
+    const deep = hole.y > attackLine;
+    pushCourse(`最大の空き(${(holeScore / SVG_PER_M).toFixed(1)}m)`, hole.x, hole.y,
+      deep ? 'jumpfloat' : 'floater', deep ? 'long' : 'normal');
+  }
+
+  // --- 2. 継ぎ目: x隣接の受け手間で最大ギャップ(2人の責任の境目) ---
+  const byX = [...receivers].sort((a, b) => a.x - b.x);
+  let seam = null, seamGap = -1;
+  for (let i = 0; i < byX.length - 1; i++) {
+    const g = byX[i + 1].x - byX[i].x;
+    if (g > seamGap) { seamGap = g; seam = { x: (byX[i].x + byX[i + 1].x) / 2, y: (byX[i].y + byX[i + 1].y) / 2 }; }
+  }
+  if (seam && seamGap > 1.4 * SVG_PER_M) {
+    pushCourse(`継ぎ目ねらい(${(seamGap / SVG_PER_M).toFixed(1)}m)`, seam.x, seam.y + 10, 'floater', 'normal');
+  }
+
+  // --- 3. 前空き: 受け手が総じて後ろに下がっている → 短いサーブ ---
+  const frontMost = Math.min.apply(null, receivers.map(r => r.y));
+  if (frontMost > T + 0.95 * SVG_PER_M) {
+    pushCourse('前空き(ネット際の短いサーブ)', (L + R) / 2, T + 18, 'floater', 'short');
+  }
+
+  // --- 4. 深い両隅: 受け手が前寄りでエンドライン際が空く ---
+  const backMost = Math.max.apply(null, receivers.map(r => r.y));
+  if (backMost < B - 0.8 * SVG_PER_M) {
+    pushCourse('深い左後ろ(ロングサーブ)', L + 16, B - 16, 'jumpfloat', 'long');
+    pushCourse('深い右後ろ(ジャンプサーブ)', R - 16, B - 16, 'jump', 'long');
+  }
+
+  if (courses.length === 0) {
+    notes.push('💡 隊形が密で大きな穴がありません。受け手を動かすか、サーブ種を変えてお試しください');
+  } else {
+    notes.unshift(`✓ ${courses.length}本のサーブコースを生成(これらが弱点=守りを厚くすべき所)`);
   }
   return { courses, notes };
 }
@@ -3798,13 +3959,15 @@ function buildScene(pattern) {
   buildNet3D(newScene);
 
   // Players (our + opp) — keep blocker info for course deflection
+  const setterId = pattern.receiverTargetId || 'S';
   pattern.ourPlayers.forEach(p => {
     const isAttacker = p.id === pattern.attackerId;
     const w = svgToWorld(p.x, p.y);
     const hCm = (typeof p.heightCm === 'number') ? p.heightCm : defaultHeightFor(p.id);
     const blk = !!p.isBlocker;
     const spk = !!p.isSpiker;
-    addPlayer3D(newScene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm, blk, p.id, spk);
+    const rcv = inferReceiver(p, pattern.scene, false, setterId);
+    addPlayer3D(newScene, w.x, w.z, isAttacker ? 0xef5b3b : 0xf4a72a, p.label, isAttacker, false, hCm, blk, p.id, spk, rcv);
     if (blk && !spk) {
       currentBlockers.push({ x: w.x, z: w.z, handY: fingertipY(hCm, true), id: p.id, heightCm: hCm });
     }
@@ -3814,7 +3977,8 @@ function buildScene(pattern) {
     const hCm = (typeof p.heightCm === 'number') ? p.heightCm : 155;
     const blk = !!p.isBlocker;
     const spk = !!p.isSpiker;
-    addPlayer3D(newScene, w.x, w.z, 0x4d6a8a, p.label, false, true, hCm, blk, p.id, spk);
+    const rcv = inferReceiver(p, pattern.scene, true, setterId);
+    addPlayer3D(newScene, w.x, w.z, 0x4d6a8a, p.label, false, true, hCm, blk, p.id, spk, rcv);
     if (blk && !spk) {
       currentBlockers.push({ x: w.x, z: w.z, handY: fingertipY(hCm, true), id: p.id, heightCm: hCm });
     }
@@ -3953,129 +4117,172 @@ function fingertipY(heightCm, isBlocker, isSpiker = false) {
   return feet + totalH + armReachAboveShoulder(totalH);
 }
 
-function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150, isBlocker = false, playerId = null, isSpiker = false) {
-  // スパイクとブロックは排他
-  if (isSpiker) isBlocker = false;
+// 任意の2点(a→b)を結ぶ円柱を作る(脚・前腕など傾いた四肢に使用)。
+// local +Y を a→b 方向へ向ける。
+const _CYL_UP = new THREE.Vector3(0, 1, 0);
+function cylBetween(ax, ay, az, bx, by, bz, rTop, rBot, mat, seg) {
+  const dx = bx - ax, dy = by - ay, dz = bz - az;
+  const len = Math.hypot(dx, dy, dz) || 0.001;
+  const geo = new THREE.CylinderGeometry(rTop, rBot, len, seg || 8);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+  const dir = new THREE.Vector3(dx, dy, dz).normalize();
+  const q = new THREE.Quaternion().setFromUnitVectors(_CYL_UP, dir);
+  mesh.quaternion.copy(q);
+  mesh.castShadow = true;
+  return mesh;
+}
+
+// レシーブ体勢の判定。手動ポーズ(💥/🛡/🙌)が優先、無ければシーン+役割から自動推定。
+function inferReceiver(p, scene, isOpp, setterId) {
+  if (p.isReceiver) return true;             // 手動🙌
+  if (p.isSpiker || p.isBlocker) return false; // 他の手動ポーズが優先
+  if (!isOpp) {
+    if (scene === 'reception') return p.id !== setterId; // セッター以外は受け手
+    if (scene === 'dig') return p.id === 'LB' || p.id === 'RB'; // 後衛はディグ体勢
+  }
+  return false;
+}
+
+function addPlayer3D(scene, x, z, color, label, isAttacker, isOpp = false, heightCm = 150, isBlocker = false, playerId = null, isSpiker = false, isReceiver = false) {
+  // 体勢は排他: スパイク > ブロック > レシーブ > 立位
+  if (isSpiker) { isBlocker = false; isReceiver = false; }
+  else if (isBlocker) { isReceiver = false; }
+  const stance = isSpiker ? 'spike' : isBlocker ? 'block' : isReceiver ? 'receive' : 'stand';
   const group = new THREE.Group();
   group.userData = { playerId, side: isOpp ? 'opp' : 'our', isPlayer: true };
+
   // 実寸プロポーション (小学生想定)
   const totalH = heightCm / 100;                       // m
   const headR = Math.max(0.07, totalH * 0.067);
   const shoulderR = Math.max(0.13, totalH * 0.115);
   const hipR = shoulderR * 0.92;
-  const bodyH = totalH - headR * 2;
+  const legR = shoulderR * 0.36;                       // 太もも
+  const ankleR = legR * 0.62;
+  const armR = shoulderR * 0.22;
 
-  // ジャンプ姿勢 (スパイク > ブロック > 立位)
-  let feetY = 0;
-  if (isSpiker) feetY = SPIKE_JUMP_H;
-  else if (isBlocker) feetY = BLOCK_JUMP_H;
-  const bodyCenterY = feetY + bodyH / 2;
-  const headCenterY = feetY + bodyH + headR;
-  const shoulderY = feetY + bodyH;
-
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
   const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
 
-  // Body
-  const bodyGeo = new THREE.CylinderGeometry(shoulderR, hipR, bodyH, 16);
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = bodyCenterY;
-  body.castShadow = true;
-  group.add(body);
-  // Head
+  // 立位基準の各部高さ(床から)
+  const hipFromFloor = totalH * 0.48;
+  const shoulderFromFloor = totalH - headR * 2;
+  const torsoH = shoulderFromFloor - hipFromFloor;
+
+  // ジャンプ量(足が床から浮く)
+  const feetY = isSpiker ? SPIKE_JUMP_H : isBlocker ? BLOCK_JUMP_H : 0;
+  // レシーブは膝を曲げて重心を落とす
+  const crouch = isReceiver ? totalH * 0.13 : 0;
+  const hipY = feetY + hipFromFloor - crouch;
+  const shoulderY = hipY + torsoH;
+  const headCenterY = shoulderY + headR + 0.02;
+
+  // ----- 脚(2本) + 足 -----
+  const hipHalf = hipR * 0.5;
+  const footSplay = isReceiver ? hipHalf * 2.3 : isBlocker ? hipHalf * 0.85 : isSpiker ? hipHalf * 1.0 : hipHalf * 1.25;
+  const footFwd = isReceiver ? totalH * 0.06 : (isSpiker ? -totalH * 0.05 : 0);
+  [-1, 1].forEach(s => {
+    const leg = cylBetween(s * hipHalf, hipY, 0, s * footSplay, feetY + 0.03, footFwd, legR, ankleR, bodyMat, 8);
+    group.add(leg);
+    // 足(小さな平たい箱)
+    const footGeo = new THREE.BoxGeometry(ankleR * 2.1, ankleR * 1.1, ankleR * 3.4);
+    const foot = new THREE.Mesh(footGeo, bodyMat);
+    foot.position.set(s * footSplay, feetY + ankleR * 0.55, footFwd + ankleR * 0.8);
+    foot.castShadow = true;
+    group.add(foot);
+  });
+
+  // ----- 胴(腰→肩) -----
+  const torso = cylBetween(0, hipY, 0, 0, shoulderY, 0, shoulderR, hipR, bodyMat, 16);
+  group.add(torso);
+  // 首の下に肩ライン(小さな球で丸みを)
+  const neckGeo = new THREE.SphereGeometry(shoulderR * 0.55, 12, 10);
+  const neck = new THREE.Mesh(neckGeo, bodyMat);
+  neck.position.set(0, shoulderY, 0);
+  neck.castShadow = true;
+  group.add(neck);
+
+  // ----- 頭 -----
   const headGeo = new THREE.SphereGeometry(headR, 16, 12);
-  const headMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
-  const head = new THREE.Mesh(headGeo, headMat);
+  const head = new THREE.Mesh(headGeo, skinMat);
   head.position.y = headCenterY;
   head.castShadow = true;
   group.add(head);
 
-  // Block時の腕(2本、肩から真上に)
-  if (isBlocker) {
-    const armR = shoulderR * 0.22;
-    const armLen = armReachAboveShoulder(totalH);
-    const armGeo = new THREE.CylinderGeometry(armR, armR * 0.85, armLen, 10);
-    const xOffset = shoulderR * 0.55;
-    [-1, 1].forEach(side => {
-      const arm = new THREE.Mesh(armGeo, bodyMat);
-      arm.position.set(side * xOffset, shoulderY + armLen / 2, 0);
-      arm.castShadow = true;
-      group.add(arm);
-      // 手のひら(小さい球)
-      const handGeo = new THREE.SphereGeometry(armR * 1.6, 10, 8);
-      const handMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
-      const hand = new THREE.Mesh(handGeo, handMat);
-      hand.position.set(side * xOffset, shoulderY + armLen + armR * 0.6, 0);
-      hand.castShadow = true;
-      group.add(hand);
-    });
-    // ジャンプを示す影下の地面マーカー(青リング)
-    const jumpRingGeo = new THREE.RingGeometry(shoulderR + 0.05, shoulderR + 0.14, 32);
-    const jumpRingMat = new THREE.MeshBasicMaterial({ color: 0x58d3ff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
-    const jumpRing = new THREE.Mesh(jumpRingGeo, jumpRingMat);
-    jumpRing.rotation.x = -Math.PI / 2;
-    jumpRing.position.y = 0.015;
-    group.add(jumpRing);
+  const armLen = armReachAboveShoulder(totalH);
+  const shX = shoulderR * 0.6; // 肩の左右オフセット
+  function addHand(px, py, pz) {
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(armR * 1.6, 10, 8), skinMat);
+    hand.position.set(px, py, pz);
+    hand.castShadow = true;
+    group.add(hand);
   }
 
-  // Spike時のフォーム(片腕真上に伸ばす + 反対の腕は前下方)
-  if (isSpiker) {
-    const armR = shoulderR * 0.22;
-    const armLen = armReachAboveShoulder(totalH);
-    const handGeo = new THREE.SphereGeometry(armR * 1.6, 10, 8);
-    const handMat = new THREE.MeshStandardMaterial({ color: 0xf5d8b8, roughness: 0.6 });
-    // 利き腕(右、+x方向)を真上に — ヒッティングアーム
-    const upArmGeo = new THREE.CylinderGeometry(armR, armR * 0.85, armLen, 10);
-    const upArm = new THREE.Mesh(upArmGeo, bodyMat);
-    upArm.position.set(shoulderR * 0.65, shoulderY + armLen / 2, 0);
-    upArm.castShadow = true;
+  if (isBlocker) {
+    // ブロック: 両腕を真上に
+    [-1, 1].forEach(side => {
+      const arm = cylBetween(side * shX, shoulderY, 0, side * shX, shoulderY + armLen, 0, armR, armR * 0.85, bodyMat, 10);
+      group.add(arm);
+      addHand(side * shX, shoulderY + armLen + armR * 0.6, 0);
+    });
+  } else if (isSpiker) {
+    // スパイク: 利き腕(右)を真上、反対腕(左)を前下方へ
+    const upArm = cylBetween(shX, shoulderY, 0, shX, shoulderY + armLen, 0, armR, armR * 0.85, bodyMat, 10);
     group.add(upArm);
-    const upHand = new THREE.Mesh(handGeo, handMat);
-    upHand.position.set(shoulderR * 0.65, shoulderY + armLen + armR * 0.6, 0);
-    upHand.castShadow = true;
-    group.add(upHand);
-    // 反対腕(左)を前下方に — リード(バランス)アーム。X軸まわりに前傾
-    const fArmLen = armLen * 0.7;
-    const fArmGeo = new THREE.CylinderGeometry(armR, armR * 0.85, fArmLen, 10);
-    const fArm = new THREE.Mesh(fArmGeo, bodyMat);
-    fArm.position.set(-shoulderR * 0.55, shoulderY - fArmLen * 0.15, fArmLen * 0.35);
-    fArm.rotation.x = -0.7; // 前傾
-    fArm.castShadow = true;
-    group.add(fArm);
-    const fHand = new THREE.Mesh(handGeo, handMat);
-    // 前腕先端のだいたいの位置
-    fHand.position.set(-shoulderR * 0.55, shoulderY - fArmLen * 0.45, fArmLen * 0.78);
-    fHand.castShadow = true;
-    group.add(fHand);
-    // ジャンプを示す影下のリング(オレンジ=スパイク色)
-    const ringGeo = new THREE.RingGeometry(shoulderR + 0.05, shoulderR + 0.16, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff5f4a, side: THREE.DoubleSide, transparent: true, opacity: 0.55 });
+    addHand(shX, shoulderY + armLen + armR * 0.6, 0);
+    const leadLen = armLen * 0.75;
+    const lead = cylBetween(-shX, shoulderY, 0.02, -shX * 0.8, shoulderY - leadLen * 0.55, leadLen * 0.7, armR, armR * 0.85, bodyMat, 10);
+    group.add(lead);
+    addHand(-shX * 0.8, shoulderY - leadLen * 0.6, leadLen * 0.75);
+  } else if (isReceiver) {
+    // レシーブ: 両前腕を前下方で組む(プラットフォーム)
+    const joinX = 0, joinY = hipY + totalH * 0.05, joinZ = footFwd + totalH * 0.32;
+    [-1, 1].forEach(side => {
+      const arm = cylBetween(side * shX, shoulderY, 0.02, joinX, joinY, joinZ, armR, armR * 0.9, bodyMat, 10);
+      group.add(arm);
+    });
+    // 組んだ手(平たい箱=プラットフォーム面)
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(shoulderR * 1.5, armR * 1.4, armR * 2.6), skinMat);
+    plat.position.set(joinX, joinY, joinZ);
+    plat.castShadow = true;
+    group.add(plat);
+  } else {
+    // 立位: 両腕を体側に自然に下ろす
+    [-1, 1].forEach(side => {
+      const arm = cylBetween(side * shX, shoulderY, 0, side * (shX + 0.02), hipY + torsoH * 0.15, 0.02, armR, armR * 0.9, bodyMat, 8);
+      group.add(arm);
+      addHand(side * (shX + 0.02), hipY + torsoH * 0.1, 0.03);
+    });
+  }
+
+  // ----- 体勢を示す地面リング(色分け) -----
+  const stanceRingColor = { block: 0x58d3ff, spike: 0xff5f4a, receive: 0x5dcaa5, stand: 0 }[stance];
+  if (stanceRingColor) {
+    const rOuter = stance === 'receive' ? shoulderR + 0.18 : shoulderR + 0.14;
+    const ringGeo = new THREE.RingGeometry(shoulderR + 0.05, rOuter, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: stanceRingColor, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.018;
+    ring.position.y = 0.015;
     group.add(ring);
   }
 
   // Glow ring under attacker
   if (isAttacker) {
-    const ringGeo = new THREE.RingGeometry(shoulderR + 0.08, shoulderR + 0.18, 32);
+    const ringGeo = new THREE.RingGeometry(shoulderR + 0.2, shoulderR + 0.3, 32);
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xef5b3b, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.02;
     group.add(ring);
   }
-  // Label
-  let labelText = `${label} ${heightCm}`;
-  if (isSpiker) labelText += ' 💥';
-  else if (isBlocker) labelText += ' 🛡';
-  const sprite = makeTextSprite(labelText);
+  // Label(体勢の絵文字付き)
+  const stanceEmoji = { spike: ' 💥', block: ' 🛡', receive: ' 🙌', stand: '' }[stance];
+  const sprite = makeTextSprite(`${label} ${heightCm}${stanceEmoji}`);
   // ジャンプ姿勢時は指先より少し上、それ以外は頭上
-  let labelY;
-  if (isSpiker || isBlocker) {
-    labelY = shoulderY + armReachAboveShoulder(totalH) + 0.30;
-  } else {
-    labelY = totalH + 0.22;
-  }
+  const labelY = (isSpiker || isBlocker)
+    ? shoulderY + armLen + 0.30
+    : headCenterY + headR + 0.20;
   sprite.position.y = labelY;
   sprite.scale.set(0.55, 0.18, 1);
   group.add(sprite);
@@ -5279,43 +5486,46 @@ function renderHeightsPanel(pattern) {
       if (window._volleySave) window._volleySave();
       rebuildSceneFromCurrent();
     });
-    // 🛡 ブロッカートグル
+    // 体勢トグル(🛡ブロック / 💥スパイク / 🙌レシーブ)は排他。
     const blkToggle = document.createElement('div');
     blkToggle.className = 'pose-toggle blk' + (p.isBlocker ? ' active' : '');
     blkToggle.textContent = '🛡';
-    blkToggle.title = 'ブロッカー(ジャンプ+両腕上げ)';
-    // 💥 スパイカートグル
+    blkToggle.title = 'ブロック体勢(ジャンプ+両腕上げ)';
     const spkToggle = document.createElement('div');
     spkToggle.className = 'pose-toggle spk' + (p.isSpiker ? ' active' : '');
     spkToggle.textContent = '💥';
-    spkToggle.title = 'スパイクフォーム(ジャンプ+片腕上げ)';
-    blkToggle.addEventListener('click', () => {
-      const player = list.find(x => x.id === p.id);
-      if (!player) return;
-      if (window._volleyPushUndo) window._volleyPushUndo();
-      player.isBlocker = !player.isBlocker;
-      if (player.isBlocker) player.isSpiker = false; // 排他
-      blkToggle.classList.toggle('active', player.isBlocker);
-      spkToggle.classList.toggle('active', player.isSpiker);
-      if (window._volleySave) window._volleySave();
-      rebuildSceneFromCurrent();
-    });
-    spkToggle.addEventListener('click', () => {
-      const player = list.find(x => x.id === p.id);
-      if (!player) return;
-      if (window._volleyPushUndo) window._volleyPushUndo();
-      player.isSpiker = !player.isSpiker;
-      if (player.isSpiker) player.isBlocker = false; // 排他
-      spkToggle.classList.toggle('active', player.isSpiker);
-      blkToggle.classList.toggle('active', player.isBlocker);
-      if (window._volleySave) window._volleySave();
-      rebuildSceneFromCurrent();
-    });
+    spkToggle.title = 'スパイク体勢(ジャンプ+片腕上げ)';
+    const rcvToggle = document.createElement('div');
+    rcvToggle.className = 'pose-toggle rcv' + (p.isReceiver ? ' active' : '');
+    rcvToggle.textContent = '🙌';
+    rcvToggle.title = 'レシーブ体勢(膝を曲げてアンダー)';
+    function syncPoseToggles(player) {
+      blkToggle.classList.toggle('active', !!player.isBlocker);
+      spkToggle.classList.toggle('active', !!player.isSpiker);
+      rcvToggle.classList.toggle('active', !!player.isReceiver);
+    }
+    function makePoseHandler(flag) {
+      return () => {
+        const player = list.find(x => x.id === p.id);
+        if (!player) return;
+        if (window._volleyPushUndo) window._volleyPushUndo();
+        const next = !player[flag];
+        player.isBlocker = player.isSpiker = player.isReceiver = false; // いったん全解除
+        player[flag] = next; // 排他でトグル
+        syncPoseToggles(player);
+        if (window._volleySave) window._volleySave();
+        rebuildSceneFromCurrent();
+      };
+    }
+    blkToggle.addEventListener('click', makePoseHandler('isBlocker'));
+    spkToggle.addEventListener('click', makePoseHandler('isSpiker'));
+    rcvToggle.addEventListener('click', makePoseHandler('isReceiver'));
     heightsGrid.appendChild(tag);
     heightsGrid.appendChild(slider);
     heightsGrid.appendChild(val);
     heightsGrid.appendChild(blkToggle);
     heightsGrid.appendChild(spkToggle);
+    heightsGrid.appendChild(rcvToggle);
   }
 
   // 味方
@@ -5339,13 +5549,14 @@ function renderHeightsPanel(pattern) {
   // Reset row
   const reset = document.createElement('button');
   reset.className = 'cam-preset h-reset';
-  reset.textContent = '🔄 標準にもどす(身長デフォルト、🛡💥解除)';
+  reset.textContent = '🔄 標準にもどす(身長デフォルト、🛡💥🙌解除)';
   reset.addEventListener('click', () => {
     if (window._volleyPushUndo) window._volleyPushUndo();
     pattern.ourPlayers.forEach(p => {
       p.heightCm = defaultHeightFor(p.id);
       p.isBlocker = false;
       p.isSpiker = false;
+      p.isReceiver = false;
     });
     pattern.oppPlayers.forEach(p => {
       // 相手側の標準: OL/OR=160(前衛アタッカー想定), OC/OS=155
@@ -5353,6 +5564,7 @@ function renderHeightsPanel(pattern) {
       else p.heightCm = 155;
       p.isBlocker = false;
       p.isSpiker = false;
+      p.isReceiver = false;
     });
     if (window._volleySave) window._volleySave();
     renderHeightsPanel(pattern);

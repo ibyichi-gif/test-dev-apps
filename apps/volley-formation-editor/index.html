@@ -4162,21 +4162,30 @@ function jointBall(r, mat) {
 }
 
 // ----- ポーズ定義(ラジアン) -----
-// shLx/shRx: 肩の前後スイング(0=下, π≈真上, >πで背面側にコック)
-// shLz/shRz: 肩の内外(レシーブで両手を寄せる) / el*: 肘曲げ(負) / hip/knee: 脚
+// 座標系(検証済み): 腕/脚は関節から -y に垂れ、rotation.x は
+//   負 = 前方(+z, ネット側)へスイング / 正 = 後方へ。π を超えると頭上を通る。
+//   例: -0.9=前下 / +3.4=頭上やや前 / +2.3=頭上かなり後ろ(コック)
+// shLz/shRz: 肩の内外(+で体の中心/左へ) / legZL,legZR: 股の開き(左右) / el*: 肘(負=前へ曲げ)
 const POSES = {
-  stand:       { torso: 0.06, neck: -0.03, shLx: 0.10, shLz: 0.08, shRx: 0.10, shRz: -0.08, elL: -0.18, elR: -0.18, hipL: 0.06, hipR: 0.06, kneeL: -0.10, kneeR: -0.10, rootY: 0 },
-  receive:     { torso: 0.52, neck: -0.30, shLx: 0.85, shLz: 0.30, shRx: 0.85, shRz: -0.30, elL: -0.06, elR: -0.06, hipL: 0.85, hipR: 0.85, kneeL: -1.45, kneeR: -1.45, rootY: 0 },
-  receiveDeep: { torso: 0.62, neck: -0.34, shLx: 0.95, shLz: 0.32, shRx: 0.95, shRz: -0.32, elL: -0.04, elR: -0.04, hipL: 1.05, hipR: 1.05, kneeL: -1.72, kneeR: -1.72, rootY: 0 },
-  block:       { torso: 0.05, neck: 0.05, shLx: 2.88, shLz: 0.12, shRx: 2.88, shRz: -0.12, elL: -0.10, elR: -0.10, hipL: 0.18, hipR: 0.18, kneeL: -0.30, kneeR: -0.30, rootY: BLOCK_JUMP_H },
-  crouch:      { torso: 0.55, neck: -0.15, shLx: -0.70, shLz: 0.10, shRx: -0.70, shRz: -0.10, elL: -0.25, elR: -0.25, hipL: 1.00, hipR: 1.00, kneeL: -1.80, kneeR: -1.80, rootY: 0 },
-  spikeCock:   { torso: -0.20, neck: 0.12, shLx: 1.35, shLz: 0.15, shRx: 3.45, shRz: -0.25, elL: -0.35, elR: -1.45, hipL: 0.45, hipR: 0.25, kneeL: -1.05, kneeR: -0.75, rootY: SPIKE_JUMP_H * 1.06 },
-  spikeHit:    { torso: 0.30, neck: -0.10, shLx: -0.30, shLz: 0.10, shRx: 2.15, shRz: -0.10, elL: -0.20, elR: -0.10, hipL: -0.18, hipR: -0.30, kneeL: -0.30, kneeR: -0.42, rootY: SPIKE_JUMP_H },
-  serveReady:  { torso: 0.10, neck: 0.00, shLx: 0.55, shLz: 0.05, shRx: -0.55, shRz: -0.10, elL: -0.55, elR: -0.85, hipL: 0.10, hipR: 0.10, kneeL: -0.18, kneeR: -0.18, rootY: 0 },
-  serveToss:   { torso: -0.10, neck: 0.15, shLx: 2.60, shLz: 0.05, shRx: 3.35, shRz: -0.20, elL: -0.10, elR: -1.35, hipL: 0.08, hipR: 0.16, kneeL: -0.14, kneeR: -0.28, rootY: 0 },
-  serveHit:    { torso: 0.28, neck: -0.08, shLx: 0.25, shLz: 0.08, shRx: 2.30, shRz: -0.10, elL: -0.25, elR: -0.08, hipL: 0.04, hipR: -0.10, kneeL: -0.10, kneeR: -0.20, rootY: 0.06 },
+  stand:       { torso: 0.06, neck: -0.03, shLx: -0.06, shLz: 0.08, shRx: -0.06, shRz: -0.08, elL: -0.18, elR: -0.18, hipL: -0.05, hipR: -0.05, kneeL: 0.08, kneeR: 0.08, legZL: -0.06, legZR: 0.06, rootY: 0 },
+  // レシーブ: 足を左右に開き腰を深く落とし、両腕プラットフォームを前方(ネット側)へ
+  receive:     { torso: 0.50, neck: -0.30, shLx: -0.90, shLz: 0.30, shRx: -0.90, shRz: -0.30, elL: -0.06, elR: -0.06, hipL: -0.90, hipR: -0.90, kneeL: 1.50, kneeR: 1.50, legZL: -0.30, legZR: 0.30, rootY: 0 },
+  receiveDeep: { torso: 0.60, neck: -0.34, shLx: -1.00, shLz: 0.32, shRx: -1.00, shRz: -0.32, elL: -0.04, elR: -0.04, hipL: -1.05, hipR: -1.05, kneeL: 1.72, kneeR: 1.72, legZL: -0.34, legZR: 0.34, rootY: 0 },
+  // ブロック: 両腕を頭上やや前(ネットへ被せる)
+  block:       { torso: 0.05, neck: 0.05, shLx: 3.38, shLz: 0.12, shRx: 3.38, shRz: -0.12, elL: -0.10, elR: -0.10, hipL: -0.20, hipR: -0.20, kneeL: 0.35, kneeR: 0.35, legZL: -0.10, legZR: 0.10, rootY: BLOCK_JUMP_H },
+  // 沈み込み(助走の踏切前): 腕は後ろ下へ振る
+  crouch:      { torso: 0.55, neck: -0.15, shLx: 0.85, shLz: 0.10, shRx: 0.85, shRz: -0.10, elL: -0.25, elR: -0.25, hipL: -0.95, hipR: -0.95, kneeL: 1.62, kneeR: 1.62, legZL: -0.16, legZR: 0.16, rootY: 0 },
+  // スパイク: コック(頭上後方深く+背反り) → 打点(ほぼ真上) → フォロースルー(前下)で約120°のフルスイング
+  spikeCock:   { torso: -0.22, neck: 0.12, shLx: -1.95, shLz: 0.15, shRx: 2.20, shRz: -0.22, elL: -0.30, elR: -1.35, hipL: 0.42, hipR: 0.30, kneeL: 0.60, kneeR: 0.45, legZL: -0.10, legZR: 0.10, rootY: SPIKE_JUMP_H * 1.06 },
+  spikeContact:{ torso: 0.18, neck: -0.05, shLx: -0.60, shLz: 0.10, shRx: 3.35, shRz: -0.15, elL: -0.25, elR: -0.08, hipL: -0.20, hipR: -0.05, kneeL: 0.25, kneeR: 0.10, legZL: -0.08, legZR: 0.08, rootY: SPIKE_JUMP_H },
+  spikeFollow: { torso: 0.42, neck: -0.15, shLx: -0.20, shLz: 0.08, shRx: 4.30, shRz: -0.08, elL: -0.30, elR: -0.25, hipL: -0.32, hipR: -0.18, kneeL: 0.35, kneeR: 0.22, legZL: -0.08, legZR: 0.08, rootY: SPIKE_JUMP_H * 0.82 },
+  // サーブ: 構え(右腕後ろ) → トス(左腕前上) → 打点(頭上) → フォロー(前下)
+  serveReady:  { torso: 0.10, neck: 0.00, shLx: -0.55, shLz: 0.05, shRx: 0.60, shRz: -0.10, elL: -0.55, elR: -0.85, hipL: -0.10, hipR: -0.10, kneeL: 0.16, kneeR: 0.16, legZL: -0.08, legZR: 0.08, rootY: 0 },
+  serveToss:   { torso: -0.12, neck: 0.15, shLx: -2.60, shLz: 0.05, shRx: 2.35, shRz: -0.20, elL: -0.10, elR: -1.30, hipL: -0.06, hipR: -0.14, kneeL: 0.10, kneeR: 0.24, legZL: -0.08, legZR: 0.08, rootY: 0 },
+  serveHit:    { torso: 0.22, neck: -0.08, shLx: -0.40, shLz: 0.08, shRx: 3.50, shRz: -0.12, elL: -0.30, elR: -0.06, hipL: -0.06, hipR: 0.08, kneeL: 0.10, kneeR: 0.18, legZL: -0.08, legZR: 0.08, rootY: 0.06 },
+  serveFollow: { torso: 0.40, neck: -0.14, shLx: -0.15, shLz: 0.06, shRx: 4.25, shRz: -0.06, elL: -0.30, elR: -0.25, hipL: -0.16, hipR: 0.02, kneeL: 0.20, kneeR: 0.14, legZL: -0.08, legZR: 0.08, rootY: 0 },
 };
-const STANCE_POSE = { stand: 'stand', receive: 'receive', block: 'block', spike: 'spikeHit' };
+const STANCE_POSE = { stand: 'stand', receive: 'receive', block: 'block', spike: 'spikeContact' };
 
 function lerpPose(a, b, k) {
   const out = {};
@@ -4187,11 +4196,13 @@ function lerpPose(a, b, k) {
   return out;
 }
 
-// 股/膝の角度から骨盤の高さをFKで求める(足が常に接地する)
+// 股/膝の角度から骨盤の高さをFKで求める(足が常に接地する)。
+// 股の開き(legZ)ぶんも脚の鉛直成分が縮む。
 function pelvisHeightFor(rig, p) {
   const { thighL, shinL } = rig.dims;
-  const hL = thighL * Math.cos(p.hipL || 0) + shinL * Math.cos((p.hipL || 0) + (p.kneeL || 0));
-  const hR = thighL * Math.cos(p.hipR || 0) + shinL * Math.cos((p.hipR || 0) + (p.kneeR || 0));
+  const zL = Math.cos(p.legZL || 0), zR = Math.cos(p.legZR || 0);
+  const hL = (thighL * Math.cos(p.hipL || 0) + shinL * Math.cos((p.hipL || 0) + (p.kneeL || 0))) * zL;
+  const hR = (thighL * Math.cos(p.hipR || 0) + shinL * Math.cos((p.hipR || 0) + (p.kneeR || 0))) * zR;
   return Math.max(hL, hR, rig.dims.H * 0.16);
 }
 
@@ -4207,11 +4218,15 @@ function applyPose(rig, pose) {
   rig.elR.rotation.x = p.elR || 0;
   rig.hipL.rotation.x = p.hipL || 0;
   rig.hipR.rotation.x = p.hipR || 0;
+  rig.hipL.rotation.z = p.legZL || 0;   // 股の開き(左は-で外)
+  rig.hipR.rotation.z = p.legZR || 0;
   rig.kneeL.rotation.x = p.kneeL || 0;
   rig.kneeR.rotation.x = p.kneeR || 0;
   // 足裏は水平を保つ(脚の連鎖角を打ち消す)
   rig.footL.rotation.x = -((p.hipL || 0) + (p.kneeL || 0));
   rig.footR.rotation.x = -((p.hipR || 0) + (p.kneeR || 0));
+  rig.footL.rotation.z = -(p.legZL || 0);
+  rig.footR.rotation.z = -(p.legZR || 0);
   rig.livePose = { ...p };
 }
 
@@ -4452,8 +4467,9 @@ function choreographPlayback(co, timeMap, t0) {
     animatePoseSeq(tempServerRig, t0, [
       { dur: 350, to: POSES.serveReady },
       { dur: 450, to: POSES.serveToss },
-      { dur: 250, to: POSES.serveHit },   // スイング終端=発射
-      { dur: 500, to: POSES.serveReady },
+      { dur: 250, to: POSES.serveHit },     // 頭上ヒット(終端=発射)
+      { dur: 200, to: POSES.serveFollow },  // 前方フォロースルー
+      { dur: 420, to: POSES.serveReady },
     ]);
     // 飛行終了後にサーバー像を片付け
     activeAnims.push({ t0: t0 + preroll + flightMs + 700, dur: 1, tick() {}, onDone() { disposeTempServerRig(); } });
@@ -4468,12 +4484,13 @@ function choreographPlayback(co, timeMap, t0) {
     if (hitter) {
       preroll = 950;
       animatePoseSeq(hitter, t0, [
-        { dur: 300, to: POSES.crouch },     // 沈み込み
-        { dur: 280, to: POSES.spikeCock },  // 跳躍+コック
-        { dur: 170, to: POSES.spikeCock },  // 空中で溜め
-        { dur: 200, to: POSES.spikeHit },   // スイング(終端=発射)
-        { dur: 260, to: POSES.crouch },     // 着地
-        { dur: 320, to: hitter.basePose },  // 構え直し
+        { dur: 300, to: POSES.crouch },       // 沈み込み(腕は後ろへ)
+        { dur: 300, to: POSES.spikeCock },    // 跳躍+深いテイクバック
+        { dur: 170, to: POSES.spikeCock },    // 空中で溜め
+        { dur: 180, to: POSES.spikeContact }, // 頭上でヒット(終端=発射)
+        { dur: 160, to: POSES.spikeFollow },  // 前方へのフォロースルー
+        { dur: 260, to: POSES.crouch },       // 着地
+        { dur: 320, to: hitter.basePose },    // 構え直し
       ]);
     }
   }

@@ -1292,7 +1292,8 @@
         <li>選手・ボール・選択コースの🟡ピンは<b>3D内でもドラッグ移動</b>可能</li>
         <li>選手は<b>足つきの立体像</b>で表示。体勢は 🛡ブロック / 💥スパイク / 🙌レシーブ を自動判定(📏身長調整パネルで手動上書きも可)</li>
         <li>📏 身長調整パネル: 身長スライダーと 🛡/💥/🙌 の体勢トグル(排他)</li>
-        <li>▶ 再生: スパイカーの助走→ジャンプ→スイング(サーブはトス→スイング)と同期して、実速度ベースの弾道をボールが飛びます。着地点に最も近い味方が受けの動きをします</li>
+        <li>▶ 再生: スパイカーの助走→ジャンプ→スイング→<b>振り下ろし</b>(サーブはトス→スイング)と同期して、実速度ベースの弾道をボールが飛びます。<b>フェイントは振らずに頭上タッチ→腕をそのまま下ろす</b>別モーション。着地点に最も近い味方が受けの動きをします</li>
+        <li><b>〰 軌道線ボタン</b>: 軌道の線・着地マーカーをOFFにすると、コースが見えない状態でボールだけが飛んできます(コースを読む練習用)</li>
       </ul>
       <h3>💾 データ</h3>
       <ul>
@@ -1338,6 +1339,7 @@
         <option value="-1">-- なし --</option>
       </select>
       <button class="cam-preset" id="playCourseBtn" title="選択中コースの軌道をボールが飛ぶアニメで再生" disabled>▶ 再生</button>
+      <button class="cam-preset active" id="toggleTrajBtn" title="コースの軌道線・着地マーカーの表示/非表示。OFFにすると軌道が見えない状態でボールが飛んでくる(コースを読む練習用)" aria-pressed="true">〰 軌道線</button>
       <span class="slider-val" id="playSpeedVal" style="min-width:auto;color:var(--text-dim)"></span>
       <span class="control-label" style="margin-left:6px">山</span>
       <input type="range" class="slider" id="arcSlider" min="0" max="4" step="0.05" value="0" disabled>
@@ -4179,6 +4181,15 @@ const POSES = {
   spikeCock:   { torso: -0.22, neck: 0.12, shLx: -1.95, shLz: 0.15, shRx: 2.20, shRz: -0.22, elL: -0.30, elR: -1.35, hipL: 0.42, hipR: 0.30, kneeL: 0.60, kneeR: 0.45, legZL: -0.10, legZR: 0.10, rootY: SPIKE_JUMP_H * 1.06 },
   spikeContact:{ torso: 0.18, neck: -0.05, shLx: -0.60, shLz: 0.10, shRx: 3.35, shRz: -0.15, elL: -0.25, elR: -0.08, hipL: -0.20, hipR: -0.05, kneeL: 0.25, kneeR: 0.10, legZL: -0.08, legZR: 0.08, rootY: SPIKE_JUMP_H },
   spikeFollow: { torso: 0.42, neck: -0.15, shLx: -0.20, shLz: 0.08, shRx: 4.30, shRz: -0.08, elL: -0.30, elR: -0.25, hipL: -0.32, hipR: -0.18, kneeL: 0.35, kneeR: 0.22, legZL: -0.08, legZR: 0.08, rootY: SPIKE_JUMP_H * 0.82 },
+  // 振り下ろし完遂(腕が体側前まで降り切る)。spikeDownW は同じ見た目の巻き戻し角
+  // (5.55-2π≈-0.73)。次の着地ポーズへ「前から下ろした」まま連続に繋ぐための1msスナップ用。
+  spikeDown:   { torso: 0.50, neck: -0.18, shLx: -0.15, shLz: 0.08, shRx: 5.55, shRz: -0.05, elL: -0.30, elR: -0.35, hipL: -0.30, hipR: -0.15, kneeL: 0.40, kneeR: 0.28, legZL: -0.08, legZR: 0.08, rootY: SPIKE_JUMP_H * 0.45 },
+  spikeDownW:  { torso: 0.50, neck: -0.18, shLx: -0.15, shLz: 0.08, shRx: -0.73, shRz: -0.05, elL: -0.30, elR: -0.35, hipL: -0.30, hipR: -0.15, kneeL: 0.40, kneeR: 0.28, legZL: -0.08, legZR: 0.08, rootY: SPIKE_JUMP_H * 0.45 },
+  // フェイント: 振りかぶらず前から真上に手を伸ばして触り、そのまま前から下ろす
+  // (負角ドメイン: -3.06=頭上, 前を通って -0.3=体側 まで連続)
+  feintReach:  { torso: 0.04, neck: 0.10, shLx: -0.85, shLz: 0.15, shRx: -3.06, shRz: -0.10, elL: -0.35, elR: -0.10, hipL: -0.12, hipR: -0.12, kneeL: 0.28, kneeR: 0.28, legZL: -0.08, legZR: 0.08, rootY: SPIKE_JUMP_H },
+  feintTouch:  { torso: 0.10, neck: 0.00, shLx: -0.70, shLz: 0.12, shRx: -2.90, shRz: -0.10, elL: -0.30, elR: -0.06, hipL: -0.12, hipR: -0.12, kneeL: 0.28, kneeR: 0.28, legZL: -0.08, legZR: 0.08, rootY: SPIKE_JUMP_H },
+  feintLower:  { torso: 0.12, neck: -0.05, shLx: -0.25, shLz: 0.08, shRx: -0.30, shRz: -0.08, elL: -0.20, elR: -0.20, hipL: -0.25, hipR: -0.25, kneeL: 0.45, kneeR: 0.45, legZL: -0.08, legZR: 0.08, rootY: 0 },
   // サーブ: 構え(右腕後ろ) → トス(左腕前上) → 打点(頭上) → フォロー(前下)
   serveReady:  { torso: 0.10, neck: 0.00, shLx: -0.55, shLz: 0.05, shRx: 0.60, shRz: -0.10, elL: -0.55, elR: -0.85, hipL: -0.10, hipR: -0.10, kneeL: 0.16, kneeR: 0.16, legZL: -0.08, legZR: 0.08, rootY: 0 },
   serveToss:   { torso: -0.12, neck: 0.15, shLx: -2.60, shLz: 0.05, shRx: 2.35, shRz: -0.20, elL: -0.10, elR: -1.30, hipL: -0.06, hipR: -0.14, kneeL: 0.10, kneeR: 0.24, legZL: -0.08, legZR: 0.08, rootY: 0 },
@@ -4483,15 +4494,30 @@ function choreographPlayback(co, timeMap, t0) {
     }
     if (hitter) {
       preroll = 950;
-      animatePoseSeq(hitter, t0, [
-        { dur: 300, to: POSES.crouch },       // 沈み込み(腕は後ろへ)
-        { dur: 300, to: POSES.spikeCock },    // 跳躍+深いテイクバック
-        { dur: 170, to: POSES.spikeCock },    // 空中で溜め
-        { dur: 180, to: POSES.spikeContact }, // 頭上でヒット(終端=発射)
-        { dur: 160, to: POSES.spikeFollow },  // 前方へのフォロースルー
-        { dur: 260, to: POSES.crouch },       // 着地
-        { dur: 320, to: hitter.basePose },    // 構え直し
-      ]);
+      if (co.type === 'feint') {
+        // ---- フェイント: 振りかぶらず頭上に手を伸ばして触る → 腕をそのまま前から下ろす ----
+        animatePoseSeq(hitter, t0, [
+          { dur: 260, to: POSES.crouch },      // 軽い沈み込み(スパイクと同じ入り=フェイク)
+          { dur: 300, to: POSES.feintReach },  // 跳躍+前から真上へ手を伸ばす
+          { dur: 190, to: POSES.feintReach },  // 空中で保持(スイングしない)
+          { dur: 200, to: POSES.feintTouch },  // ボールにそっと触れる(終端=発射)
+          { dur: 320, to: POSES.feintLower },  // 触った後、腕を前からそのまま下ろして着地
+          { dur: 300, to: hitter.basePose },
+        ]);
+      } else {
+        // ---- 強打系: テイクバック → 頭上ヒット → 振り下ろし完遂 ----
+        animatePoseSeq(hitter, t0, [
+          { dur: 300, to: POSES.crouch },       // 沈み込み(腕は後ろへ)
+          { dur: 300, to: POSES.spikeCock },    // 跳躍+深いテイクバック
+          { dur: 170, to: POSES.spikeCock },    // 空中で溜め
+          { dur: 180, to: POSES.spikeContact }, // 頭上でヒット(終端=発射)
+          { dur: 140, to: POSES.spikeFollow },  // フォロースルー
+          { dur: 170, to: POSES.spikeDown },    // 腕を体側前まで振り下ろし切る
+          { dur: 1,   to: POSES.spikeDownW },   // 角度ドメイン巻き戻し(見た目同一)
+          { dur: 240, to: POSES.crouch },       // 着地
+          { dur: 300, to: hitter.basePose },    // 構え直し
+        ]);
+      }
     }
   }
 
@@ -5361,6 +5387,32 @@ const courseSelect = document.getElementById('courseSelect');
 const arcSlider = document.getElementById('arcSlider');
 const arcVal = document.getElementById('arcVal');
 
+// ---------- 軌道線の表示切替 ----------
+// OFF: コースのチューブ/扇/リング/バッジ/ピンを全て隠し、ボールだけが飛んでくる
+// (試合のようにコースを読む練習用)。▶再生・コース選択はそのまま使える。
+let showTrajectories = true;
+const toggleTrajBtn = document.getElementById('toggleTrajBtn');
+function applyTrajectoryVisibility() {
+  const v = showTrajectories;
+  courseObjects.forEach(co => {
+    ['tube', 'slipTube', 'bounceTube', 'ring', 'bounceRing', 'fan', 'badge', 'bounceBadge', 'hitMarker'].forEach(k => {
+      if (co[k]) co[k].visible = v;
+    });
+  });
+  if (courseTargetHandle) courseTargetHandle.visible = v;
+  if (toggleTrajBtn) {
+    toggleTrajBtn.classList.toggle('active', v);
+    toggleTrajBtn.setAttribute('aria-pressed', String(v));
+    toggleTrajBtn.textContent = v ? '〰 軌道線' : '〰 軌道線OFF';
+  }
+}
+if (toggleTrajBtn) {
+  toggleTrajBtn.addEventListener('click', () => {
+    showTrajectories = !showTrajectories;
+    applyTrajectoryVisibility();
+  });
+}
+
 function initSliders(pattern) {
   // Ball height
   const h = (typeof pattern.ball.h === 'number') ? pattern.ball.h : 2.5;
@@ -5563,6 +5615,7 @@ function updateCourseTargetHandle(courseIdx) {
   const t = svgToWorld(c.x2, c.y2);
   const handle = buildCourseTargetHandle(t.x, t.z);
   handle.userData.courseIdx = courseIdx;
+  handle.visible = showTrajectories; // 軌道線OFF中はピンも隠す
   scene.add(handle);
   courseTargetHandle = handle;
 }
@@ -5972,6 +6025,7 @@ function rebuildSceneFromCurrent() {
   } catch (e) {
     console.error('[volley-editor] highlight/handle update failed:', e);
   }
+  applyTrajectoryVisibility(); // 再構築後もON/OFF状態を維持
 }
 
 // ---------- ENTRY ----------
@@ -5993,6 +6047,9 @@ function open3D(idx) {
     initSliders(pattern);
     renderHeightsPanel(pattern);
     bindDragHandlers();
+    // 開くたびに軌道線はONへ戻す(前回OFFのままだと混乱するため)
+    showTrajectories = true;
+    applyTrajectoryVisibility();
     animate();
     try { btnExit.focus(); } catch (e) {} // フォーカスをダイアログ内へ
   });
